@@ -1,0 +1,23 @@
+MuNet engine — proprietary license (DRAFT: have this reviewed before the first commercial release)
+
+Copyright (c) 2026 Bryan Pakulski. All rights reserved.
+
+"The Engine" means the MuNet C++ sources (cpp/, except cpp/munet_c.h and cpp/third_party/) and every compiled form of
+them, including the native libraries in the munet-nn Python wheels (munet/_native*), the munet-c archives, the C++
+SDK archives and the munet-node worker.
+
+1. You may download the Engine and use it for evaluation. Evaluation use is unlicensed use: the Engine runs in
+   evaluation mode and reports it.
+2. Any other use (production, commercial, or distribution as part of a product or service) requires a license key
+   issued by the copyright holder, used under the terms agreed with it.
+3. You may not copy (except as needed to install and run it), modify, reverse engineer, decompile or disassemble the
+   Engine, or remove or circumvent its license-key check, except where applicable law expressly permits it.
+4. You may not redistribute the Engine except as part of an application covered by a license key, as agreed with the
+   copyright holder.
+5. THE ENGINE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR
+   ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE ENGINE.
+
+Third-party components keep their own licenses: cpp/third_party/ (nlohmann/json MIT, Khronos Vulkan headers MIT,
+TweetNaCl public domain). The bindings and wrappers are MIT licensed (LICENSE-MIT).
+
+Licensing: open an issue at https://github.com/bryan-pakulski/munet-releases or contact the copyright holder.
