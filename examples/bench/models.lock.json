@@ -13,6 +13,7 @@
  "sam/mobile-sam-vit-t-encoder.onnx": "8b8168033ea6687bb55ba242222b67a301ac9da30fd5cbfd04dcebbb180ec2a8",
  "svtr/1.png": "3b6f713df8731ccc473ba9e169081a5e55417f727c713e37f194825f6f8b0e2c",
  "svtr/ppocr-v4-en.onnx": "02672d591fee561a95a2491bd5504d66c812b145d1043026c5658ecc165c7e85",
+ "v0.0.1/clip-b32-visual-dyn.onnx": "4962914240f80dbac5b9d33dc3fa321cdcaa4820193d65c51e8edc3cd28109d2",
  "v0.0.1/depth-anything-v2-s.onnx": "b47f3b67a5fadc18dec8cfae9954544182b79b57e8beedf6051a27cd73001c77",
  "yolo/demo-cls.jpg": "e93655033d50ad34e4613b142bd711bcdf7c1ad884d0a3c9152bdaf3b72abdb9",
  "yolo/demo-det.jpg": "ce18447ed23e62da22d2de11144e3cfcb0b6b8a750efb18c1a59ea5ad67f6ac9",
