@@ -12,6 +12,7 @@
 | Make inference fast (precision, autotuning, batching, measuring) | [inference.md](inference.md) |
 | Quantize (int8 convolutions, int8 / int4 linear layers, pre-quantized ONNX) | [quantization.md](quantization.md) |
 | Configure NVIDIA, Intel, AMD, mobile GPUs and containers | [gpus.md](gpus.md) |
+| GPUs MuNet has been validated on, and known issues | [tested-hardware.md](tested-hardware.md) |
 | Deploy from C or C++ | [c.md](c.md) |
 | Deploy from Rust | [../rust/README.md](../rust/README.md) |
 | Detect objects in video without copies (frame pipeline, FFmpeg, Vulkan interop) | [zero-copy.md](zero-copy.md) |

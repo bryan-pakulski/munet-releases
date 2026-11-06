@@ -27,6 +27,7 @@ Linux x86_64 and aarch64 (glibc 2.28+) are built for every release. Running on a
 | Run models fast (precision, autotuning, batching, `.mnet`) | [Inference and performance](docs/inference.md) |
 | Quantize to int8 / int4 | [Quantization](docs/quantization.md) |
 | Configure NVIDIA, AMD or Intel GPUs, and containers | [GPU vendors](docs/gpus.md) |
+| Check which GPUs have been tested | [Tested hardware](docs/tested-hardware.md) |
 | Run models from C or C++ | [C and C++](docs/c.md) |
 | Run models from Rust | [Rust](rust/README.md) |
 | Detect objects in video with zero copies | [Zero copy and video](docs/zero-copy.md) |
