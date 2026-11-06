@@ -4,6 +4,8 @@ MuNet uses one code path for every GPU: Vulkan compute, plus `VK_KHR_cooperative
 It adapts to each GPU on its own (fragment shapes, subgroup sizes, fp16 denormal handling, tile sizes). You don't
 need vendor flags to get correct results, and usually not for speed either.
 
+GPUs MuNet has been validated on, with known issues: [tested-hardware.md](tested-hardware.md).
+
 ## See what MuNet detected
 
 ```python
@@ -23,7 +25,10 @@ for i in range(len(mu.devices())):
 
 ## NVIDIA
 
-- **Driver.** The proprietary driver includes Vulkan. Cooperative matrices need a recent driver; check `cooperative_matrix`.
+- **Driver.** The proprietary driver includes Vulkan. Cooperative matrices need a driver that exposes
+  `VK_KHR_cooperative_matrix`; check `cooperative_matrix`. The 535 branch (common on cloud images) exposes only
+  `VK_NV_cooperative_matrix`, so MuNet runs fp32 kernels there and says so in `driver_warning`. The 595 branch works on
+  Turing through Blackwell. See [tested-hardware.md](tested-hardware.md).
 - **Precision.** GeForce RTX 30/40 run `"fp16"` about twice as fast as `"mixed"` on matmuls and convolutions.
 - **`VK_NV_cooperative_matrix2`.** It is detected (`coopmat2`) and used by an opt-in convolution kernel,
   `MUNET_COOP2_CONV=1`. That kernel is correct but not faster yet, so leave it off. `MUNET_DISABLE_COOP2=1` hides the

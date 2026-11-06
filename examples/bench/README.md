@@ -39,8 +39,17 @@ FAIL is anything worse, a shape mismatch or non-finite outputs; ERROR is an impo
 is in the results file). Random-input parity is a numerical check, not an accuracy metric: a WARN on fp16/int8 is worth
 a look with real data; a FAIL or ERROR is a bug.
 
-`--trt` times the same models with `trtexec` (fp32, fp16, and int8 without calibration, i.e. speed only) in the
-`--trt-image` container (default `rsq-inference:nvidia-test`, any TensorRT image works) on CUDA device `--trt-gpu`.
+`--trt` times the same models with `trtexec` at the precisions given to `--precision` (int8 without calibration, so
+speed only) in the `--trt-image` container (any TensorRT image works, e.g. `nvcr.io/nvidia/tensorrt:26.03-py3`) on CUDA
+device `--trt-gpu`. NVIDIA GPUs are detected by PCI vendor ID.
+
+`hardware_report.py` turns runs from several GPUs into the speed tables of
+[docs/tested-hardware.md](../../docs/tested-hardware.md):
+- MuNet milliseconds per model;
+- speed relative to a baseline GPU;
+- MuNet against TensorRT on the same GPU.
+
+For example: `python examples/bench/hardware_report.py --baseline "RTX 3060" "RTX 3060=results/nvidia-geforce-rtx-3060" "L4=path/to/l4/results"`.
 
 ## Files
 
@@ -48,7 +57,8 @@ a look with real data; a FAIL or ERROR is a bug.
   image, overrides for non-image inputs). Tiers: `quick` (one or two per family), `standard`, `full`.
 - `models.lock.json`: SHA-256 of every downloaded file (trust on first use; downloads that differ are rejected).
   Commit it after adding models.
-- `results/<gpu>/<timestamp>.json`: one file per GPU and run (git-ignored); `report.py` renders them.
+- `results/<gpu>/<timestamp>.json`: one file per GPU and run (git-ignored); `report.py` renders them, and
+  `hardware_report.py` compares GPUs.
 - Downloads cache in `$MUNET_BENCH_CACHE` (default `~/.cache/munet-bench`) with the ONNX Runtime references.
 
 New GPU: run the suite on it and compare `report.py` matrices; models that fail on one vendor only point at driver or

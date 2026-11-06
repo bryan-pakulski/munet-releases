@@ -299,7 +299,7 @@ def main():
     ap.add_argument("--device", action="append", help="vulkan:N (repeatable; default: every Vulkan GPU)")
     ap.add_argument("--precision", default=",".join(PRECISIONS))
     ap.add_argument("--runs", type=int, default=20)
-    ap.add_argument("--trt", action="store_true", help="also time TensorRT fp32/fp16/int8 (NVIDIA GPUs, Docker)")
+    ap.add_argument("--trt", action="store_true", help="also time TensorRT at the same precisions (NVIDIA GPUs, Docker): the baseline in reports")
     ap.add_argument("--trt-image", default=os.environ.get("MUNET_BENCH_TRT_IMAGE", "rsq-inference:nvidia-test"))
     ap.add_argument("--trt-gpu", default="0", help="CUDA device index for TensorRT")
     ap.add_argument("--out", default=str(HERE / "results"))
@@ -365,8 +365,8 @@ def main():
                     print(f"  {device} {precision:5s} {result['status']:5s} gpu {result.get('gpu_ms', float('nan')):8.2f} ms"
                           f"  host {result.get('host_ms', float('nan')):8.2f} ms  min cos {worst}"
                           f"{'  ' + result.get('error', result.get('note', '')) if result['status'] == 'ERROR' or 'note' in result else ''}", flush=True)
-                if args.trt and "NVIDIA" in runs[device]["device"]:
-                    for precision in ("fp32", "fp16", "int8"):
+                if args.trt and runs[device]["vendor_id"] == 0x10DE:  # NVIDIA by PCI vendor ("Tesla T4" names no vendor)
+                    for precision in precisions:  # the precisions MuNet ran, for a like-for-like baseline
                         t = tensorrt(path, shapes, precision, args.trt_image, args.trt_gpu)
                         t["model"] = model.name
                         runs[device]["tensorrt"].append(t)
