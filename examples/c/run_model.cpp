@@ -1,8 +1,9 @@
-// Minimal C++ client of the MuNet C API: load a .mnet program, describe it, run it on zeros and print each output's
-// first values and the GPU time. See docs/c.md.
+// Minimal C++ client of the MuNet C API: load a .mnet program (or import an .onnx model natively), describe it, run it
+// on zeros and print each output's first values and the GPU time. See docs/c.md.
 //
 //   c++ -std=c++17 run_model.cpp -I<sdk>/include -L<sdk>/lib -lmunet_c -o run_model   # shared library
 //   ./run_model model.mnet [device]          # device -1: CPU reference executor
+//   ./run_model model.onnx [device]          # static-shape ONNX models (symbolic inputs: see munet_onnx_input_shape)
 #include "munet/munet_c.h"
 
 #include <cstdio>
@@ -48,7 +49,7 @@ std::string describe(const std::vector<int64_t>& dims) {
 
 int main(int argc, char** argv) try {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: %s model.mnet [device]\n", argv[0]);
+    std::fprintf(stderr, "usage: %s model.mnet|model.onnx [device]\n", argv[0]);
     return 2;
   }
   std::printf("MuNet %s (C API %u), %d Vulkan device(s)\n", munet_version(), munet_api_version(), munet_device_count());
@@ -56,7 +57,9 @@ int main(int argc, char** argv) try {
   munet_options options = munet_default_options();
   if (argc > 2) options.device = std::atoi(argv[2]);
   options.precision = MUNET_PRECISION_MIXED;
-  Program program(munet_load(argv[1], &options));
+  const std::string path = argv[1];
+  const bool onnx = path.size() > 5 && path.compare(path.size() - 5, 5, ".onnx") == 0;
+  Program program(onnx ? munet_load_onnx(argv[1], nullptr, &options) : munet_load(argv[1], &options));
   if (!program) throw std::runtime_error(std::string("load: ") + munet_last_error());
 
   // Inputs: contiguous float32 tensors in declaration order (integer inputs carry exact integer values as floats).

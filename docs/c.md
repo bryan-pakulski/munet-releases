@@ -68,8 +68,45 @@ munet_license_json(json, sizeof json);   /* {"status":"licensed","customer":...,
 
 ## Models
 
-Programs are exported once from Python (`pip install munet-nn`; see the Python guide). Shapes are static, so
-export one program per batch size and resolution you serve:
+Load an ONNX file directly (C API 5; the engine's native importer, no Python), or a `.mnet` program exported from
+Python. Shapes are static: give symbolic input dimensions a shape, one program per batch size and resolution you serve.
+
+```c
+int64_t images[] = {1, 3, 640, 640}, sizes[] = {1, 2};
+munet_onnx_input_shape shapes[] = {{"images", images, 4}, {"orig_target_sizes", sizes, 2}};
+munet_onnx_options onnx = munet_default_onnx_options();     /* optimize on (layer merging, attention fusion) */
+onnx.input_shapes = shapes; onnx.input_shape_count = 2;
+munet_program* program = munet_load_onnx("detector.onnx", &onnx, &options);   /* munet_load_onnx_on: on a context */
+```
+
+The native importer builds the same graph as Python's `from_onnx`, including QDQ / int8 layers, NonMaxSuppression and
+control flow. `munet_onnx_options` also takes int8 activation scales and a cache file:
+
+```c
+munet_int8_scale int8[] = {{"conv1", 0.021f}, {"conv2", 0.013f}};    /* e.g. from munet_calibrate_onnx below */
+onnx.int8_scales = int8; onnx.int8_scale_count = 2;
+onnx.cache_path = "/var/cache/app/detector.mnet";   /* reused while the ONNX file and these options are unchanged */
+```
+
+The cache file is a `.mnet` archive keyed by the ONNX file's SHA-256, the import options, the MuNet version and the
+format version ([onnx.md](onnx.md#native-import-load-onnx-without-python) has the rules). `munet_save(program, path)`
+writes any program as `.mnet` (what `munet.save` writes).
+
+int8 calibration runs the model's int8-eligible layers in fp32 over your batches and returns per-layer scales
+(`munet.quantization.calibrate_onnx`'s algorithm and observers):
+
+```c
+const float* batch0[] = {images0, sizes0}, *batch1[] = {images1, sizes1};   /* one pointer per model input */
+const float* const* batches[] = {batch0, batch1};
+munet_calibration* cal = munet_calibrate_onnx("detector.onnx", &onnx, &options, batches, 2, "mse", 2048);
+for (size_t i = 0; cal && i < munet_calibration_count(cal); ++i)
+  printf("%s %g\n", munet_calibration_name(cal, i), munet_calibration_scale(cal, i));
+munet_calibration_free(cal);
+```
+
+The native importer covers the same operators as Python, random operators included: their programs keep a step
+counter that advances every `munet_run`, and `munet_save` / `munet_load` keep it. Models with external tensor data or
+model-local functions still need the Python importer; export those from Python (`pip install munet-nn`):
 
 ```python
 import munet
@@ -136,7 +173,12 @@ MuNet computes every tensor as float32, so all data crosses the API as `float`:
 - Integer and bool inputs are passed as exact integer-valued floats (exact up to 2^24).
 - Integer outputs come back the same way; round them to recover the integers.
 - `munet_output_padded(program, i)` marks `NonMaxSuppression` outputs: `[bound, 3]` rows, where the unused rows are
-  `-1` and the caller drops them.
+  `-1`. `munet_read_output_rows` returns only the selected `[batch, class, box]` rows (what Python's program returns):
+
+```c
+std::vector<float> rows(bound * 3); size_t n = 0;
+munet_read_output_rows(program, index, rows.data(), rows.size(), &n);   // n selected rows, rows[3*r .. 3*r+2]
+```
 
 ## Precision, int8 and autotuning
 

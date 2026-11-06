@@ -21,8 +21,47 @@ munet-nn = "0.5"   # the library is imported as `munet`
 
 ## Models
 
-Programs are `.mnet` files exported once from Python (`pip install munet-nn`). Shapes are static, so export one
-program per batch size and resolution you serve:
+Load an ONNX file directly with the engine's native importer (no Python), giving symbolic input dimensions a static
+shape, one program per batch size and resolution you serve:
+
+```rust,no_run
+use munet::{OnnxOptions, Options, Program};
+
+fn main() -> munet::Result<()> {
+    let onnx = OnnxOptions::default()
+        .input_shape("images", &[3, 3, 1280, 1280])
+        .input_shape("orig_target_sizes", &[3, 2]);
+    let program = Program::load_onnx("detector.onnx", &onnx, &Options::default())?;
+    println!("{:?}", program.inputs());
+    Ok(())
+}
+```
+
+It builds the same graph as Python's `from_onnx`, including QDQ / int8 layers, NonMaxSuppression and control flow.
+`OnnxOptions` also takes int8 activation scales (from [`munet::calibrate_onnx`] or Python's `calibrate_onnx`) and a
+`.mnet` cache file, keyed by the ONNX file's SHA-256, the options, the MuNet version and the format version:
+
+```rust,no_run
+use munet::{calibrate_onnx, Observer, OnnxOptions, Options, Program};
+
+fn main() -> munet::Result<()> {
+    let onnx = OnnxOptions::default().input_shape("images", &[1, 3, 640, 640]);
+    let batch = vec![0.5f32; 3 * 640 * 640];
+    let scales = calibrate_onnx("detector.onnx", &onnx, &Options::default(), &[vec![&batch[..]]], Observer::Mse, 2048)?;
+    let onnx = scales
+        .into_iter()
+        .fold(onnx, |o, (layer, scale)| o.int8(layer, scale as f32))
+        .cache("detector-int8.mnet");                 // reused while the ONNX file and options are unchanged
+    let mut program = Program::load_onnx("detector.onnx", &onnx, &Options::default())?;
+    program.save("copy.mnet")?;                       // the format munet.save writes
+    Ok(())
+}
+```
+
+NonMaxSuppression outputs are padded (`TensorInfo::padded`); `read_rows` / `read_i64` return the selected rows only,
+as Python does. Every operator the Python importer supports imports natively (random operators keep a per-run step
+counter, as in Python). Models with external tensor data or model-local functions need the Python importer; for
+those, export a `.mnet` program from Python (`pip install munet-nn`):
 
 ```python
 import munet
