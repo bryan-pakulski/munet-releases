@@ -6,6 +6,7 @@
 - [Import a PyTorch model](#import-a-pytorch-model)
 - [Export to ONNX](#export-to-onnx)
 - [Save as .mnet for deployment](#save-as-mnet-for-deployment)
+- [Native import: load ONNX without Python](#native-import-load-onnx-without-python)
 - [What is supported](#what-is-supported)
 - [When import fails](#when-import-fails)
 
@@ -30,6 +31,7 @@ boxes = outputs.numpy()                                        # one output: a R
 | `autotune` | off | time kernel tile sizes once per GPU and cache them ([inference.md](inference.md#autotuning)) |
 | `optimize` | True | merge layers before import: fold BatchNorm, re-parameterize parallel branches (RepVGG/MobileOne), merge sibling layers, fuse attention. `model.optimizations` lists what was done. |
 | `profile` | False | per-kernel GPU times in `model.describe()` |
+| `native` | False | import with the engine's C++ importer (the one C and Rust use); see [native import](#native-import-load-onnx-without-python) |
 
 The first call compiles: it generates and compiles kernels (cached on disk), plans memory, and uploads weights.
 Later calls only run.
@@ -96,8 +98,59 @@ munet.save(model, "model.mnet")                       # graph, weights, input/ou
 again = munet.load("model.mnet", precision="fp16")    # Python
 ```
 
-C, C++ and Rust load the same file (`munet_load`, `munet::Program::load`). `.mnet` stores the computation and
+C, C++ and Rust load the same file (`munet_load`, `munet::Program::load`), or import the ONNX file directly (see
+[native import](#native-import-load-onnx-without-python)). `.mnet` stores the computation and
 weights, plus int8 scales if the model is quantized. Precision is chosen when loading.
+
+## Native import: load ONNX without Python
+
+The engine also imports ONNX itself, in C++: C and C++ call `munet_load_onnx`, Rust calls `munet::Program::load_onnx`,
+and Python reaches the same importer with `from_onnx(..., native=True)`. It builds the same graph as the Python
+importer (verified node by node on the examples/bench models), so a service can load `model.onnx` at startup the way
+TensorRT builds an engine, with no export step and no `.mnet` to keep in sync with the MuNet version.
+
+```python
+model = from_onnx("detector.onnx", input_shapes={"images": (3, 3, 1280, 1280), "orig_target_sizes": (3, 2)}, native=True)
+```
+
+- **Shapes.** Inputs with symbolic dimensions need a static shape (`input_shapes` / `munet_onnx_input_shape` /
+  `OnnxOptions::input_shape`); inputs you don't list keep the model's declared shape.
+- **Same options.** Layer merging and attention fusion are on by default (`optimize` / `munet_onnx_options.optimize`);
+  precision and device are chosen as for `.mnet` programs.
+- **Coverage.** Everything the Python importer imports, except the parts below: QDQ / QLinear graphs, int8 layers
+  (`int8=` scales, and calibration: `munet_calibrate_onnx`, `munet::calibrate_onnx`,
+  `calibrate_onnx(..., native=True)`), `NonMaxSuppression` as a model output (see below), sequences, optionals and
+  control flow (`If` with a constant condition picks a branch, with a runtime condition both branches run and a
+  select picks per call; `Loop` / `Scan` / `SequenceMap` unroll when their trip counts and conditions are known at
+  import, with the same rejections as Python). Unrolling is capped at 65536 iterations per loop and 4 million graph
+  nodes per import.
+- **Every operator family.** Random operators (same seeds and per-call state counter as Python, so the same samples on
+  every call), `Einsum`, `RoiAlign`, losses, signal processing (`DFT`, `STFT`, window functions, `MelWeightMatrix`),
+  scatter / gather-ND, recurrent layers (`RNN` / `GRU` / `LSTM`, unrolled), bitwise operators and the other
+  compositions import natively, as do the constant folds the Python importer runs through onnx's ReferenceEvaluator
+  (`EyeLike`, `OneHot`, `NonZero`, `Compress`, `Unique`, ...). What the native importer rejects, Python rejects too
+  (unknown operators, string tensors that reach the graph, external tensor data, model-local functions); errors name
+  the node and operator.
+- **Folded constants.** Shape arithmetic folds at import as in Python; floating-point folds that numpy evaluates with
+  its own math library or BLAS (e.g. `Log` or `MatMul` of two constants) can differ from Python's in the last bit.
+- **Legacy opsets.** Opset 7-12 operators are upgraded per operator. A Softmax over the last axis stays one softmax
+  (Python's version converter may add a flatten/reshape pair around it when it cannot infer the rank; the result is the
+  same).
+- **NonMaxSuppression.** As in Python, only as a model output with constant limits and thresholds: the program
+  returns a static `[batch x class x max_output_boxes_per_class, 3]` int64 tensor whose unused rows are -1. The output
+  is marked padded (`munet_output_padded`, `TensorInfo::padded`, `"padded"` in the `.mnet` io metadata);
+  `munet_read_output_rows` / `Program::read_rows` / `read_i64` return just the selected rows, as Python's program does.
+- **Save and cache.** `munet_save` / `Program::save` write the `.mnet` format `munet.save` writes (same manifest and
+  tensor bytes), readable by `munet_load` and `munet.load`. With `munet_onnx_options.cache_path` /
+  `OnnxOptions::cache`, `munet_load_onnx` keeps the import in a `.mnet` file: the key is the SHA-256 of the ONNX
+  file's bytes, the import options (input shapes, `optimize`, int8 scales, `MUNET_MERGE_SIBLINGS`), the MuNet version
+  and the format version, stored in the archive's manifest (`"munet_onnx_cache": {"key": ...}`). A matching file is
+  loaded without importing; a missing, different or unreadable one is replaced atomically (written to a temporary file
+  next to it, then renamed) after the import. Precision, device and autotuning are not part of the key (they apply at
+  load). A cache file that cannot be written is skipped (the imported program is still returned). Point `cache_path`
+  at a file of its own: any `.mnet` without a matching key there is overwritten.
+- **Untrusted files.** The protobuf decoder is bounds-checked and fuzzed; malformed files fail with an error, and
+  shapes a model derives are capped (2^31 elements per value).
 
 ## What is supported
 
