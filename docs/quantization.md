@@ -23,8 +23,12 @@ model = from_onnx("model.onnx", input_shapes={"images": (1, 3, 640, 640)}, preci
 munet.save(model, "model-int8.mnet")
 ```
 
+`calibrate_onnx(path, batches, *, observer="mse", device="vulkan", bins=2048, native=False)` runs the model in fp32
+and returns `{conv name: scale}`. Observers are `"mse"` (default), `"minmax"` and `"mean_max"`. `native=True` uses the
+engine's C++ importer, the same code as C's `munet_calibrate_onnx` and Rust's `munet::calibrate_onnx`.
+
 - **Which convolutions run in int8.** Those with constant weights, a spatial kernel (not 1x1), and a multiple of 32
-  channels per group. The rest stay fp16; `model.stats()["int8_conv_kernels"]` counts the int8 ones.
+  channels per group. The rest stay fp16. `model.stats()["int8_conv_kernels"]` counts the int8 ones.
 - **How values are quantized.** Weights per output channel, activations per tensor, both symmetric int8.
 - **Calibration data matters more than its amount.** Use real inputs from your domain. The default observer `"mse"`
   is much better than `"minmax"` for detectors.
@@ -32,7 +36,15 @@ munet.save(model, "model-int8.mnet")
 - **Partial selection.** Pass a subset of `scales` to quantize only some layers. Sensitive layers are often the
   first convolution and a few encoder layers.
 
-Runnable: [examples/python/quantize_int8.py](../examples/python/quantize_int8.py) (calibrate, compare with fp16, time,
+Measured on an RT-DETR-style detector at 1280x1280:
+
+| int8 convolutions | Time | mAP50 |
+|---|---|---|
+| none (fp16) | 23.7 ms | 83.38 |
+| 25 of 32 eligible | 21.1 ms | 83.29 |
+| all 32 | 19.8 ms | 82.36 |
+
+Runnable: [examples/python/quantize_int8.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/quantize_int8.py) (calibrate, compare with fp16, time,
 save).
 
 ## Pick layers automatically
@@ -51,6 +63,9 @@ result.save("int8-selection.json")
 model = result.compile("model.onnx", precision="fp16")     # = from_onnx(path, int8=result.int8)
 ```
 
+Signature: `autoquantize(model, calibration, validation=None, *, metric=None, tolerance=0.01, device="vulkan",
+autotune=True, ...)`.
+
 - **Candidates** are convolutions and MatMul/Gemm layers with constant weights.
 - **Default metric:** without `metric`, the relative error against fp32 outputs.
 - **Runtime:** minutes to tens of minutes for a large model. Save the result and reuse it.
@@ -65,7 +80,7 @@ model = from_onnx("model-qdq.onnx", input_shapes=...)
 ```
 
 - **int8 kernels:** symmetric int8 QDQ `MatMul`s run on the int8 GEMM.
-- **Float path:** other quantized operators run as quantize → float op → dequantize, which is exact but not faster
+- **Float path:** other quantized operators run as quantize → float op → dequantize. This is exact but not faster
   than fp16.
 
 ## Quantize MuNet Linear layers
@@ -78,6 +93,9 @@ mu.quantize(model, scheme="w8a8_dynamic")            # in place: Linear -> Quant
 program = mu.compile(model)
 ```
 
+Signature: `mu.quantize(model, calib_data=None, *, scheme="w8a8_dynamic", observer="minmax", group_size=128,
+device="cpu")`. Note the default observer here is `"minmax"`, not `"mse"`.
+
 | Scheme | Weights | Activations | Best for | Measured |
 |---|---|---|---|---|
 | `w8a8_dynamic` | int8 per channel | int8 per row, computed at run time | large batches (prefill, big MLPs) | ~2x fp16 on large GEMMs |
@@ -88,7 +106,7 @@ program = mu.compile(model)
 The measurements are from an RTX 3060. Above 8 rows the weight-only schemes run about as fast as fp16 and only save
 memory.
 
-Check accuracy with `mu.quantization.compare(fp32_program, quantized_program, inputs)`, which returns the cosine,
+Check accuracy with `mu.quantization.compare(fp32_program, quantized_program, inputs)`. It returns the cosine,
 max error and relative error.
 
 ## Quantization-aware training
@@ -102,12 +120,10 @@ model.train()
 # ... the usual compiled train step and loop (training.md), a few epochs at lr ~1e-5 ...
 ```
 
-## Notes
+## Limits
 
-- **Measured on a detector.** An RT-DETR-style detector at 1280x1280: fp16 23.7 ms, mAP50 83.38; int8 on 25 of 32
-  eligible convolutions 21.1 ms, mAP50 83.29; all 32: 19.8 ms, mAP50 82.36. The gain grows with convolution size;
-  tiny models gain little.
 - **What stays fp16:** 1x1 convolutions, asymmetric (zero-point) ranges, and batched right-hand matmul operands.
 - **Accuracy without a GPU.** The quantize-dequantize arithmetic also runs on CPU and fp32 plans, so you can check a
   selection's accuracy on any machine.
-- **Export.** `to_onnx` exports quantized programs as QDQ (`QuantizeLinear` / `DequantizeLinear`).
+- **Export.** `to_onnx` exports quantized programs as QDQ ([onnx.md](onnx.md#export-to-onnx)).
+- **Turn int8 off.** `MUNET_NO_INT8=1` runs quantized layers in fp16 ([environment.md](environment.md)).

@@ -1,13 +1,7 @@
 # Multiple GPUs
 
-MuNet uses every Vulkan GPU in the machine, whatever the vendor. You can mix NVIDIA, AMD and Intel cards in one
-training run.
-
-- [Train on several GPUs](#train-on-several-gpus)
-- [GPUs of different size and speed](#gpus-of-different-size-and-speed) (e.g. RTX 3090 + 3060 + 4060)
-- [Data loading for several GPUs](#data-loading-for-several-gpus)
-- [Inference on several GPUs](#inference-on-several-gpus)
-- [Pick which GPU "vulkan" means](#pick-which-gpu-vulkan-means)
+MuNet can use every Vulkan GPU in one machine, whatever the vendor. One training run can mix NVIDIA, AMD and Intel
+cards.
 
 ## Train on several GPUs
 
@@ -30,6 +24,9 @@ for epoch in range(10):
         loss = dp.step(x, y)                     # Python float, batch-mean loss
 ```
 
+`DataParallel` defaults to `precision="fp32"`, unlike `mu.compile` (default `"mixed"`). Pass `precision="mixed"`, as
+above, to use tensor / matrix cores.
+
 How a step works:
 
 1. The batch is split on dim 0 into one shard per GPU.
@@ -40,7 +37,7 @@ How a step works:
 The result is the same as one full-batch step on a single GPU, for any split. Training code is unchanged: `model`
 holds the trained weights afterwards, so evaluate, checkpoint and export as usual.
 
-- `mu.devices()` lists the GPUs; `"vulkan:N"` is the N-th entry.
+- `mu.devices()` lists the GPUs; `"vulkan:N"` is the N-th entry ([gpus.md](gpus.md#choose-a-gpu)).
 - The same device may appear twice (two replicas on one GPU).
 - `loss_fn` must return the batch mean (`reduction="mean"`, the default for every loss).
 
@@ -63,8 +60,8 @@ Runnable example: [examples/python/train_multi_gpu.py](../examples/python/train_
 
 ### Example: RTX 3090 (24 GB) + RTX 3060 (12 GB) + RTX 4060 (8 GB)
 
-These cards differ in two ways. The 3090 is roughly twice as fast as the other two, and the 4060 has a third of
-the 3090's memory. Use one of these setups.
+The 3090 is roughly twice as fast as the other two cards. The 4060 has a third of the 3090's memory. Use one of
+these setups.
 
 **Simplest: split by memory.** Each card gets rows in proportion to its memory:
 
@@ -85,7 +82,7 @@ dp = mu.DataParallel(loss_fn, model.parameters(), optimizer, devices,
                      precision="mixed", split="auto", max_rows=[None, 160, 96])   # example caps: measure yours below
 ```
 
-**Fixed: you know the ratio.** This avoids the few recompiles that `"auto"` does while it settles:
+**Fixed: you know the ratio.** This avoids the recompiles `"auto"` does while it settles:
 
 ```python
 dp = mu.DataParallel(..., devices, split=[2, 1, 1], max_rows=[None, 160, 96])
@@ -100,7 +97,8 @@ The memory a GPU needs grows linearly with its rows. `dp.stats()` reports each G
 memory (`arena_bytes`, which includes weights, gradients and optimizer state):
 
 ```python
-dp = mu.DataParallel(loss_fn, model.parameters(), optimizer, devices, split="even")
+dp = mu.DataParallel(loss_fn, model.parameters(), optimizer, devices,
+                     precision="mixed", split="even")   # measure at the precision you train with
 dp.step(x[:48], y[:48]); a = dp.stats()        # 16 rows per GPU
 dp.step(x[:96], y[:96]); b = dp.stats()        # 32 rows per GPU
 for s0, s1 in zip(a, b):
@@ -125,21 +123,10 @@ display and anything else running on it.
 - **One machine only.** DataParallel covers the GPUs in one machine. Training across machines uses the training swarm
   ([swarm.md](swarm.md)).
 
-## Data loading for several GPUs
+## Data loading
 
-- **With DataParallel, use one loader** that yields global batches; DataParallel splits them. Size `batch_size` for
-  all GPUs together.
-- **For one process per GPU** (or one inference worker per GPU), give each worker its own share of every epoch with
-  `shard=(index, count)`:
-
-  ```python
-  loader = DataLoader(dataset, batch_size=64, shuffle=True, seed=0, shard=(gpu_index, gpu_count))
-  ```
-
-  All shards use the same shuffled order, take disjoint rows, and get the same number of batches. Call
-  `loader.set_epoch(epoch)` (or just iterate again) for a new order.
-
-See [data.md](data.md) for the loader itself.
+With DataParallel, use one loader with the global batch size. For one process or worker per GPU, use `shard=`
+([data.md](data.md#several-gpus-or-processes)).
 
 ## Inference on several GPUs
 
@@ -168,11 +155,6 @@ batch when it is free, and faster GPUs do more of the work. See
 
 From C, C++ and Rust, load the `.mnet` once per GPU (`options.device = N`) and use one thread per program.
 
-## Pick which GPU "vulkan" means
+## Choosing devices
 
-`device="vulkan"` means GPU 0 unless `MUNET_VULKAN_DEVICE=N` is set. This moves a whole script or test suite to
-another GPU without code changes:
-
-```bash
-MUNET_VULKAN_DEVICE=1 python train.py
-```
+Device names, `MUNET_VULKAN_DEVICE` and `device="cpu"` are explained in [gpus.md](gpus.md#choose-a-gpu).

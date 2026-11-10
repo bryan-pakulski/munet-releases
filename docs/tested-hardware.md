@@ -1,8 +1,11 @@
 # Tested hardware
 
-Physical GPUs MuNet has been validated on. Each one ran the GPU test suite (about 1,300 tests on one device) and the
-quick bench tier, which compares 12 ONNX models against ONNX Runtime fp32 and times them. For what MuNet detects on
-your own GPU, see [gpus.md](gpus.md) (`device_info()`).
+GPUs MuNet has been validated on. Each one ran:
+
+- the GPU test suite (about 1,300 tests on one device);
+- the quick bench tier, which compares 12 ONNX models against ONNX Runtime fp32 and times them.
+
+To see what MuNet detects on your own GPU, use `device_info()` ([gpus.md](gpus.md#see-what-munet-detected)).
 
 Last updated 2026-11-06 (MuNet 0.8.0, plus the 0.8.1 Turing attention fix).
 
@@ -21,31 +24,44 @@ Last updated 2026-11-06 (MuNet 0.8.0, plus the 0.8.1 Turing attention fix).
 
 The CPU reference executor (`device="cpu"`) passes its suite on x86-64 and aarch64.
 
-"Pass" means the whole GPU suite passed and every bench model matched ONNX Runtime at fp32 and fp16. A few models are
-graded WARN rather than PASS (listed below); WARN still means correct output, with a precision metric just over its
-threshold.
+- **Pass:** the whole GPU suite passed and every bench model matched ONNX Runtime at fp32 and fp16.
+- **WARN** (a few bench models, [listed below](#bench-warns-correct-output-precision-just-over-the-threshold)): correct
+  output, with a precision metric just over its threshold.
 
 ## Notes per GPU
 
-**All NVIDIA.** Use a driver that exposes `VK_KHR_cooperative_matrix`; on Linux the 595 branch was used for every
-NVIDIA card here. Containers need `NVIDIA_DRIVER_CAPABILITIES` to include `graphics`, which supplies the Vulkan driver.
+### All NVIDIA
 
-**Tesla T4 with the 535 driver** (the long-term branch on many cloud images). The driver exposes tensor cores only
-through `VK_NV_cooperative_matrix`, but MuNet's fp16 and int8 kernels need the KHR extension. Without it, every
-`"mixed"` / `"fp16"` / int8 layer runs as fp32: results are correct, but about 2–4× slower than with tensor cores
-(e.g. rtdetr-v1-r18 26.0 ms vs 7.1 ms; Depth Anything v2-s 63.7 ms vs 16.9 ms). From 0.8.0 MuNet prints a warning
-for this case, and `device_info()["driver_warning"]` explains it. Updating to the 595 branch fixes it. With 535 the
-suite passes apart from one test that wrongly assumed int8 support; that test was fixed in 0.8.1.
+- Use a driver that exposes `VK_KHR_cooperative_matrix`. The 595 branch was used for every NVIDIA card here.
+- Containers need `graphics` in `NVIDIA_DRIVER_CAPABILITIES` ([gpus.md](gpus.md#nvidia)).
 
-**Turing (T4, T4G): flash attention with head size above 64.** Up to 0.8.0, attention with head sizes above 64
-(e.g. 96 or 128, common in LLMs) gave wrong outputs on Turing. The cause was a driver issue with a small shared-memory
-array. 0.8.1 works around it. Head sizes up to 64 (most vision transformers and DETRs) were never affected, and
-Ampere and newer were never affected.
+### Tesla T4 with the 535 driver
 
-**T4G (aarch64).** Same results as the x86 T4. Native int8 calibration scales can differ from Python's in the last
-floating-point bit, because the compiler fuses multiply-adds on aarch64; the parity test allows that from 0.8.1.
+535 is the long-term branch on many cloud images. It exposes tensor cores only through `VK_NV_cooperative_matrix`,
+but MuNet's fp16 and int8 kernels need the KHR extension.
 
-**Intel Arc B580.** It uses 8×16 cooperative-matrix fragments on 16-lane subgroups; MuNet picks these automatically.
+So every `"mixed"` / `"fp16"` / int8 layer runs as fp32. Results are correct, but about 2–4× slower than with tensor
+cores (e.g. rtdetr-v1-r18 26.0 ms vs 7.1 ms; Depth Anything v2-s 63.7 ms vs 16.9 ms).
+
+- MuNet prints a warning, and `device_info()["driver_warning"]` explains it.
+- Updating to the 595 branch fixes it.
+
+### Turing (T4, T4G): flash attention with head size above 64
+
+Fixed in 0.8.1. Up to 0.8.0, attention with head sizes above 64 (e.g. 96 or 128, common in LLMs) gave wrong outputs
+on Turing, caused by a driver issue.
+
+Head sizes up to 64 (most vision transformers and DETRs) and Ampere or newer GPUs were never affected.
+
+### T4G (aarch64)
+
+Same results as the x86 T4. Native int8 calibration scales can differ from Python's in the last floating-point bit,
+because the compiler fuses multiply-adds on aarch64.
+
+### Intel Arc B580
+
+MuNet picks 8×16 cooperative-matrix fragments on 16-lane subgroups automatically.
+
 H.264 decode with Vulkan video (the zero-copy frame path) needs `ANV_DEBUG=video-decode` with current Mesa. See
 [gpus.md](gpus.md#intel-arc-xe).
 
@@ -61,13 +77,16 @@ All of these models pass at fp32.
 
 ## Speed
 
-These numbers come from the quick bench tier at fp16 and batch 1, as the minimum GPU time per inference:
+Numbers are from the quick bench tier at fp16 and batch 1: the minimum GPU time per inference.
+
 - **MuNet:** GPU timestamps.
 - **TensorRT:** 10.16 (container `nvcr.io/nvidia/tensorrt:26.03-py3`), measured with `trtexec --noDataTransfers` on the
   same GPU and at the same precision.
 
-The RTX 3060 is the baseline for the relative table. The Arc B580 has no TensorRT. With the 535 driver (fp32 fallback),
-the T4 runs at **0.27×** the RTX 3060 (geometric mean), against 0.64× with the 595 driver.
+The RTX 3060 is the baseline for the relative table. The Arc B580 has no TensorRT.
+
+With the 535 driver (fp32 fallback), the T4 runs at 0.27× the RTX 3060 (geometric mean), against 0.64× with the 595
+driver.
 
 ### MuNet fp16: GPU ms per inference (batch 1, lower is better)
 
@@ -128,14 +147,12 @@ TensorRT notes:
 - **fastvit-t8:** TensorRT picked a slow plan (6–9 ms) on every GPU before Blackwell, so it is left out of the TensorRT
   mean, as noted in the table.
 
-The tables are generated with `examples/bench/hardware_report.py` from `examples/bench/run.py --trt` results. For
-contributors, the engine repository's `tools/hwtest` runs the whole validation on a GPU host or on AWS.
+`examples/bench/hardware_report.py` generates these tables from `examples/bench/run.py --trt` results.
 
 ## Not yet tested
 
-- **AMD Radeon** (RDNA2/3/4) and AMD Instinct. AWS no longer offers its only AMD GPU instance (g4ad). An RDNA4 card
-  is planned for local testing. RDNA3 and newer expose cooperative matrices through Mesa RADV; RDNA2 and older run fp32
-  kernels.
+- **AMD Radeon** (RDNA2/3/4) and AMD Instinct. RDNA3 and newer expose cooperative matrices through Mesa RADV; RDNA2
+  and older run fp32 kernels.
 - **Apple Silicon** through MoltenVK (no cooperative matrices expected, so fp32 kernels).
 - **Intel integrated graphics and Arc A-series (Alchemist).**
 - **Mobile GPUs** (Arm Mali, Qualcomm Adreno).

@@ -6,8 +6,8 @@ optionally against TensorRT on NVIDIA GPUs.
     python examples/bench/run.py --models yolo11n,rtdetr --trt # also time TensorRT (NVIDIA GPUs, Docker)
     python examples/bench/report.py                           # matrix of every results file
 
-Models (examples/bench/models.py) download from usls's release assets into $MUNET_BENCH_CACHE (default
-~/.cache/munet-bench). Downloads are untrusted: the first download of a file records its SHA-256 in
+Models (examples/bench/models.py) download from usls's release assets or Hugging Face into $MUNET_BENCH_CACHE (default
+~/.cache/munet-bench), or are exported locally by export.py. Downloads are untrusted: the first download records its SHA-256 in
 examples/bench/models.lock.json (trust on first use; commit it) and every later download must match.
 
 Each (model, device, precision) runs in its own process, so a crash or device loss is recorded as an ERROR and the
@@ -49,12 +49,36 @@ def _lock():
 
 def fetch(release, name):
     """Path of a release asset in the cache, downloaded and verified against the lock file."""
-    path = CACHE / release / name
-    lock, key = _lock(), f"{release}/{name}"
+    return download(f"{BASE}/{release}/{name}", f"{release}/{name}", CACHE / release / name)
+
+
+def resolve(model):
+    """Path of a model's ONNX file: a usls release asset, a direct URL (Hugging Face), a local export (export.py), or a
+    local file (skipped when absent)."""
+    if model.local:
+        path = Path(os.path.expanduser(os.environ.get(model.local_env, "") or model.local))
+        if not path.exists():
+            raise FileNotFoundError(f"local model {path} not found (set ${model.local_env})")
+        return path
+    if model.export:
+        path = CACHE / "export" / f"{model.export}.onnx"
+        if not path.exists():
+            python = os.environ.get("MUNET_BENCH_TORCH_PYTHON", sys.executable)
+            print(f"  exporting {model.export} with {python}", flush=True)
+            subprocess.run([python, str(HERE / "export.py"), model.export, str(path)], check=True)
+        return path
+    if model.url:
+        key = "url/" + model.url.split("://", 1)[1].split("/", 1)[1].replace("/resolve/main/", "/")
+        return download(model.url, key, CACHE / key)
+    return fetch(model.release, model.file)
+
+
+def download(url, key, path):
+    """Path of a downloaded file in the cache, verified against its SHA-256 in the lock file (pinned on first use)."""
+    lock = _lock()
     if path.exists() and lock.get(key) == _sha256(path):
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
-    url = f"{BASE}/{release}/{name}"
     print(f"  downloading {url}", flush=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
         with urllib.request.urlopen(url, timeout=120) as response:
@@ -107,8 +131,8 @@ def build_inputs(model, onnx_model, seed=0):
         dims = [d.dim_value if d.HasField("dim_value") and d.dim_value > 0 else None for d in t.shape.dim]
         if spec.shape:
             shape = tuple(spec.shape)
-        else:  # symbolic dims: batch 1, spatial dims of 4-D inputs = model.size
-            shape = tuple(d if d else (1 if i == 0 else 3 if len(dims) == 4 and i == 1 and t.elem_type == TensorProto.FLOAT
+        else:  # symbolic dims: batch model.batch, spatial dims of 4-D inputs = model.size
+            shape = tuple(d if d else (model.batch if i == 0 else 3 if len(dims) == 4 and i == 1 and t.elem_type == TensorProto.FLOAT
                                        else model.size if len(dims) == 4 and i >= 2 else 1) for i, d in enumerate(dims))
         kind = spec.kind or ("image" if len(shape) == 4 and shape[1] == 3 and dtype.kind == "f" else
                              "int" if dtype.kind in "iub" else "uniform")
@@ -329,9 +353,12 @@ def main():
                         "coop_rows": _native.coop_rows(index), "munet": mu.__version__, "date": stamp, "results": [], "tensorrt": []}
     with tempfile.TemporaryDirectory() as work:
         for model in models:
-            print(f"== {model.name} ({model.release}/{model.file})", flush=True)
+            print(f"== {model.name} ({model.source})", flush=True)
+            if model.local and not Path(os.path.expanduser(os.environ.get(model.local_env, "") or model.local)).exists():
+                print(f"  skipped: local model not found (set ${model.local_env})", flush=True)
+                continue
             try:
-                path = fetch(model.release, model.file)
+                path = resolve(model)
                 graph = onnx.load(str(path), load_external_data=False)
                 arrays, shapes = build_inputs(model, graph)
                 refs = reference(model, path, arrays)

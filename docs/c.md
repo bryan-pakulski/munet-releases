@@ -1,20 +1,8 @@
 # MuNet from C and C++
 
-The C API (`munet/munet_c.h`, API version 3) loads `.mnet` programs and runs them on any Vulkan GPU, or on the CPU
-reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig and other languages use the same
-library. This guide is the developer reference: building and linking, the run loop, precision and tuning, zero copy
-with your own Vulkan code, and the frame pipeline that takes video frames in and returns detections.
-
-- [Get the library](#get-the-library)
-- [Models](#models)
-- [Load and run](#load-and-run)
-- [Inputs, outputs and dtypes](#inputs-outputs-and-dtypes)
-- [Precision, int8 and autotuning](#precision-int8-and-autotuning)
-- [Zero copy with Vulkan](#zero-copy-with-vulkan)
-- [Frame pipeline (video detection)](#frame-pipeline-video-detection)
-- [Threads, errors and device loss](#threads-errors-and-device-loss)
-- [Diagnostics](#diagnostics)
-- [Environment variables](#environment-variables)
+The C API (`munet/munet_c.h`, API version 5, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
+them on any Vulkan GPU, or on the CPU reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig
+and other languages use the same library.
 
 ## Get the library
 
@@ -26,10 +14,13 @@ include/munet/munet_c.h
 lib/libmunet_c.so            # shared library
 lib/static/libmunet_c.a      # static: link munet_c and munet_core, plus the C++ runtime, libdl and pthread
 lib/static/libmunet_core.a
+examples/run_model.cpp       # load and run a program
+examples/vulkan_interop.cpp  # share MuNet's Vulkan device
+docs/                        # the user guides this README links to
 LICENSE, README.md
 ```
 
-Link it either way:
+Link it shared or static:
 
 ```bash
 # shared
@@ -50,16 +41,19 @@ find_package(Threads REQUIRED)
 target_link_libraries(app PRIVATE munet_c)
 ```
 
-To build from source inside the engine checkout instead, configure with `cmake -DMUNET_C_API=ON` (add
+To build from source in the engine checkout, configure with `cmake -DMUNET_C_API=ON` (add
 `-DMUNET_C_API_SHARED=ON` for `libmunet_c.so`).
 
-**At run time** you need:
-- a Vulkan 1.1+ loader and driver (any vendor: AMD, NVIDIA, Intel, Arm Mali, Qualcomm Adreno, Apple through MoltenVK);
-- `glslangValidator` on `PATH` (`glslang-tools` on Debian/Ubuntu), or its path in `MUNET_GLSLANG`. Kernels are
-  compiled when a program loads and cached in `~/.cache/munet-next` (`MUNET_CACHE_DIR`), so later loads skip it.
+At run time you need:
 
-**License.** The native library runs in evaluation mode without a key (it prints a notice). Production keys go in
-`MUNET_LICENSE`, `MUNET_LICENSE_FILE` or `~/.config/munet/license.key`. `munet_license_json()` reports the status:
+- a Vulkan 1.1+ loader and driver (any vendor: AMD, NVIDIA, Intel, Arm Mali, Qualcomm Adreno, Apple through MoltenVK);
+- `glslangValidator` on `PATH` (`glslang-tools` on Debian/Ubuntu), or its path in `MUNET_GLSLANG`.
+
+Kernels are compiled when a program loads and cached in `~/.cache/munet-next` (`MUNET_CACHE_DIR`), so later loads
+skip compilation. All environment variables: [environment.md](environment.md).
+
+Without a license key the library runs in evaluation mode and prints a notice. `munet_license_json()` reports the
+status ([key setup](getting-started.md#license-key)):
 
 ```c
 char json[512];
@@ -68,8 +62,8 @@ munet_license_json(json, sizeof json);   /* {"status":"licensed","customer":...,
 
 ## Models
 
-Load an ONNX file directly (C API 5; the engine's native importer, no Python), or a `.mnet` program exported from
-Python. Shapes are static: give symbolic input dimensions a shape, one program per batch size and resolution you serve.
+Load an ONNX file directly with the engine's native importer (no Python), or a `.mnet` program. Shapes are static:
+give symbolic input dimensions a shape, and load one program per batch size and resolution you serve.
 
 ```c
 int64_t images[] = {1, 3, 640, 640}, sizes[] = {1, 2};
@@ -80,7 +74,9 @@ munet_program* program = munet_load_onnx("detector.onnx", &onnx, &options);   /*
 ```
 
 The native importer builds the same graph as Python's `from_onnx`, including QDQ / int8 layers, NonMaxSuppression and
-control flow. `munet_onnx_options` also takes int8 activation scales and a cache file:
+control flow. Details: [onnx.md](onnx.md#native-import-load-onnx-without-python).
+
+`munet_onnx_options` also takes int8 activation scales and a cache file:
 
 ```c
 munet_int8_scale int8[] = {{"conv1", 0.021f}, {"conv2", 0.013f}};    /* e.g. from munet_calibrate_onnx below */
@@ -88,12 +84,12 @@ onnx.int8_scales = int8; onnx.int8_scale_count = 2;
 onnx.cache_path = "/var/cache/app/detector.mnet";   /* reused while the ONNX file and these options are unchanged */
 ```
 
-The cache file is a `.mnet` archive keyed by the ONNX file's SHA-256, the import options, the MuNet version and the
-format version ([onnx.md](onnx.md#native-import-load-onnx-without-python) has the rules). `munet_save(program, path)`
-writes any program as `.mnet` (what `munet.save` writes).
+- The cache file is a `.mnet` archive keyed by the ONNX file's SHA-256, the import options, the MuNet version and the
+  format version.
+- `munet_save(program, path)` writes any program as `.mnet` (what `munet.save` writes).
 
-int8 calibration runs the model's int8-eligible layers in fp32 over your batches and returns per-layer scales
-(`munet.quantization.calibrate_onnx`'s algorithm and observers):
+int8 calibration runs the model's int8-eligible layers in fp32 over your batches and returns per-layer scales. It uses
+the same algorithm and observers as Python's `munet.quantization.calibrate_onnx`:
 
 ```c
 const float* batch0[] = {images0, sizes0}, *batch1[] = {images1, sizes1};   /* one pointer per model input */
@@ -104,9 +100,10 @@ for (size_t i = 0; cal && i < munet_calibration_count(cal); ++i)
 munet_calibration_free(cal);
 ```
 
-The native importer covers the same operators as Python, random operators included: their programs keep a step
-counter that advances every `munet_run`, and `munet_save` / `munet_load` keep it. Models with external tensor data or
-model-local functions still need the Python importer; export those from Python (`pip install munet-nn`):
+Random operators keep a step counter that advances every `munet_run`. `munet_save` / `munet_load` preserve it.
+
+Models with external tensor data or model-local functions need the Python importer. Export those from Python
+(`pip install munet-nn`):
 
 ```python
 import munet
@@ -117,8 +114,7 @@ munet.save(program, "detector.mnet")   # records input/output names and declared
 
 ## Load and run
 
-The complete program is `examples/run_model.cpp` in the archive (`examples/c/run_model.cpp` in the source tree). The
-core of it:
+The complete program is `examples/run_model.cpp` in the archive. Its core:
 
 ```cpp
 #include "munet/munet_c.h"
@@ -138,7 +134,7 @@ munet_read_output(program, /* index */ 2, scores.data(), scores.size());   // co
 munet_free(program);
 ```
 
-A C++ RAII wrapper is three lines:
+A C++ RAII wrapper:
 
 ```cpp
 struct ProgramDeleter { void operator()(munet_program* p) const { munet_free(p); } };
@@ -148,15 +144,15 @@ Program program(munet_load(path, &options));
 
 How runs behave:
 
-- **Load is the expensive step.** It compiles kernels (cached after the first time), uploads the weights and records
+- Load is the expensive step. It compiles kernels (cached after the first time), uploads the weights and records
   a command buffer that every run replays. Load once and keep the program.
-- **Data stays on the GPU.** `munet_run` copies the inputs into a staging buffer and records that copy into the same
-  submission as the kernels. Weights and intermediate tensors never leave device memory, and only the outputs you
-  ask for are read back.
+- Data stays on the GPU. `munet_run` copies the inputs into a staging buffer in the same submission as the kernels.
+  Weights and intermediate tensors never leave device memory, and only the outputs you ask for are read back.
 - `munet_run` returns once the work is submitted. `munet_read_output` waits for it to finish, then copies the
-  output. Read every output you need before the next run, because the next run overwrites them.
-- **CPU executor.** Setting `options.device = -1` selects the CPU reference executor. It is slow and meant for tests
-  and correctness checks, and it is never used as a silent fallback.
+  output.
+- Read every output you need before the next run, because the next run overwrites them.
+- `options.device = -1` selects the CPU reference executor. It is slow and meant for tests. It is never used as a
+  silent fallback.
 
 ## Inputs, outputs and dtypes
 
@@ -170,10 +166,11 @@ int32_t rank = munet_input_shape(program, i, dims, 8);
 The output functions mirror these.
 
 MuNet computes every tensor as float32, so all data crosses the API as `float`:
+
 - Integer and bool inputs are passed as exact integer-valued floats (exact up to 2^24).
 - Integer outputs come back the same way; round them to recover the integers.
 - `munet_output_padded(program, i)` marks `NonMaxSuppression` outputs: `[bound, 3]` rows, where the unused rows are
-  `-1`. `munet_read_output_rows` returns only the selected `[batch, class, box]` rows (what Python's program returns):
+  `-1`. `munet_read_output_rows` returns only the selected `[batch, class, box]` rows:
 
 ```c
 std::vector<float> rows(bound * 3); size_t n = 0;
@@ -182,29 +179,27 @@ munet_read_output_rows(program, index, rows.data(), rows.size(), &n);   // n sel
 
 ## Precision, int8 and autotuning
 
-> How to choose and measure: [inference.md](inference.md); int8 export: [quantization.md](quantization.md); GPU-specific notes: [gpus.md](gpus.md).
-
-| `precision` | Matmul/conv arithmetic | Use |
+| `precision` | Python name | Matmul/conv arithmetic |
 |---|---|---|
-| `MUNET_PRECISION_MIXED` (default) | fp16 operands, fp32 accumulation; int8 on quantized layers | general inference |
-| `MUNET_PRECISION_FP16` | fp16 operands and accumulation | fastest on GPUs with fp16-accumulate cooperative matrices (GeForce Ampere/Ada: 2x the MIXED rate); validate accuracy per model |
-| `MUNET_PRECISION_FP32` | exact float32 | reference |
+| `MUNET_PRECISION_MIXED` (default) | `"mixed"` | fp16 operands, fp32 accumulation; int8 on quantized layers |
+| `MUNET_PRECISION_FP16` | `"fp16"` | fp16 operands and accumulation; fastest on GPUs with fp16-accumulate cooperative matrices; validate accuracy per model |
+| `MUNET_PRECISION_FP32` | `"fp32"` | exact float32 (reference) |
 
-- **GPUs without cooperative matrices** (most mobile GPUs) run fp32 kernels in every mode.
-- **int8** is a property of the program, not an option: export it with int8 activation scales from Python (see
-  the Python guide), and its convolutions then run on int8 cooperative-matrix kernels.
-- **Autotuning** picks tile configurations per GEMM/conv shape. Run the same program once from Python with
-  `autotune=True` and the same precision on the target GPU. The winners are cached in `MUNET_CACHE_DIR`, and C/Rust
-  loads apply them when `use_autotune_cache` is set (the default). Untuned shapes use heuristics.
+- GPUs without cooperative matrices (most mobile GPUs) run fp32 kernels in every mode.
+- How to choose and measure: [inference.md](inference.md#precision). GPU-specific notes: [gpus.md](gpus.md).
+- int8 is part of the program, not an option. Import with `int8_scales` (from `munet_calibrate_onnx` or Python's
+  `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
+  See [quantization.md](quantization.md).
+- Autotuning: run the program once from Python with `autotune=True` and the same precision on the target GPU
+  ([inference.md](inference.md#autotuning)). C loads apply the cached results when `use_autotune_cache` is set (the
+  default). Untuned shapes use heuristics.
 
 ## Zero copy with Vulkan
 
-> Walkthrough for video (host frames, FFmpeg Vulkan decode, your own buffers): [zero-copy.md](zero-copy.md).
-
-MuNet uses one `VkDevice` per GPU, and your Vulkan code can share it, for example a video decoder, a renderer or your
-own preprocessing. Tensors then never leave device memory, and nothing outside Vulkan is involved, so this works the
-same on AMD, NVIDIA, Intel and mobile GPUs. The complete, validation-clean example is
-`examples/vulkan_interop.cpp` in the archive (`examples/c/vulkan_interop.cpp` in the source tree).
+MuNet uses one `VkDevice` per GPU, and your Vulkan code can share it: a video decoder, a renderer or your own
+preprocessing. Tensors then never leave device memory. Walkthrough for video (host frames, FFmpeg Vulkan decode, your
+own buffers): [zero-copy.md](zero-copy.md). The complete, validation-clean example is `examples/vulkan_interop.cpp`
+in the archive.
 
 ```c
 munet_vulkan* ctx = munet_vulkan_create(0, MUNET_VULKAN_VIDEO_DECODE);   // flags 0: the default shared device
@@ -234,27 +229,22 @@ munet_wait(program);                /* only if the host needs to block */
 
 Rules:
 
-- **Timeline semaphores.** `wait_semaphore` and `signal_semaphore` must be timeline semaphores on the shared device.
+- Timeline semaphores: `wait_semaphore` and `signal_semaphore` must be timeline semaphores on the shared device.
   With `sync == NULL`, your writes must already be complete when you call `munet_run_device`.
-- **Queue locking.** Vulkan queues are externally synchronized, so hold `munet_vulkan_lock_queue(ctx, family, index)`
-  around every `vkQueueSubmit` or `vkQueueWaitIdle` you make on MuNet's queues, and unlock afterwards. Give FFmpeg
-  these lock functions as `AVVulkanDeviceContext.lock_queue` / `unlock_queue`.
-- **Mixing host and device runs.** Every program accepts both `munet_run` (host arrays) and `munet_run_device`
+- Queue locking: Vulkan queues are externally synchronized. Hold `munet_vulkan_lock_queue(ctx, family, index)`
+  around every `vkQueueSubmit` or `vkQueueWaitIdle` you make on MuNet's queues, and unlock afterwards with
+  `munet_vulkan_unlock_queue`. Give FFmpeg these functions as `AVVulkanDeviceContext.lock_queue` / `unlock_queue`.
+- Mixing host and device runs: every program accepts both `munet_run` (host arrays) and `munet_run_device`
   (device inputs), and can switch between them on any call.
-- **Lifetime.** `munet_vulkan_free` releases your reference; programs keep the device alive until they are freed.
-- **Device loss.** A lost device is never reused: create a new context and reload the programs on it.
+- Lifetime: `munet_vulkan_free` releases your reference. Programs keep the device alive until they are freed.
+- Device loss: see [Threads, errors and device loss](#threads-errors-and-device-loss).
 
 ## Frame pipeline (video detection)
 
-*Since 0.5.* For DETR-style detectors (inputs `images` [B,3,H,W] and `orig_target_sizes` [B,2]; outputs `labels`
-[B,Q], `boxes` [B,Q,4] as xyxy in input pixels, and `scores` [B,Q]), the frame pipeline runs the whole
-frame-to-detections path on the GPU:
-
-1. NV12 → RGB per tile, with resize, letterbox padding and normalisation.
-2. The model, once per batch of tiles.
-3. Score threshold, then tile → frame box mapping. Boxes cut by an interior tile edge are dropped, because the
-   neighbouring tile sees that object whole.
-4. Class-wise greedy NMS.
+For DETR-style detectors (inputs `images` [B,3,H,W] and `orig_target_sizes` [B,2]; outputs `labels` [B,Q], `boxes`
+[B,Q,4] as xyxy in input pixels, and `scores` [B,Q]), the frame pipeline runs NV12 colour conversion, the model,
+box mapping and NMS on the GPU. Only the detections come back. Tiles, colour and decoder sync are explained in
+[zero-copy.md](zero-copy.md).
 
 ```c
 munet_frame_pipeline* pipe = munet_frame_pipeline_create(program, /* max frame */ 3840, 2160, /* max tiles */ 32);
@@ -265,7 +255,7 @@ munet_nv12_frame frame = {
   .width = 1920, .height = 1080};
 /* or host planes: .image = NULL, .y = y, .y_pitch = ..., .uv = uv, .uv_pitch = ... (only the NV12 bytes are uploaded) */
 
-munet_tile tiles[3] = {...};                 /* see below */
+munet_tile tiles[3] = {...};                 /* frame = input_px * scale + offset; see zero-copy.md */
 munet_detection found[300];
 size_t count = 0;
 munet_frame_detect(pipe, &frame, tiles, 3, /* color: NULL = BT.709 limited, no normalisation */ NULL,
@@ -274,37 +264,25 @@ munet_frame_detect(pipe, &frame, tiles, 3, /* color: NULL = BT.709 limited, no n
 munet_frame_pipeline_free(pipe);             /* before freeing the program */
 ```
 
-**Tiles.** Each `munet_tile` describes one model input. It maps model input pixels to frame pixels as
-`frame = input_px * scale + offset`, and model pixels outside `content_*` are black padding.
-
-| Use | Settings |
-|---|---|
-| Stretch the whole frame | `scale = frame_size / model_size`, `offset = 0`, content = the full input, `has_region = 0` |
-| Letterbox | content = the scaled image rectangle, `offset = -content_origin * scale` |
-| Tile a large frame | one tile per crop; set `has_region = 1` and `region_*` to the frame area the tile is responsible for. Boxes touching an interior region edge (within 2 px) are rejected. |
-
-If there are more tiles than the program's batch size, the pipeline runs the program as many times as needed.
-
-**Colour.** `munet_frame_color` holds the YCbCr → RGB coefficients plus `mean` and `inv_std`, applied as
-`(RGB/255 - mean) * inv_std`. Pick the matrix from the decoder's colour space and range, e.g. BT.601 for SD sources.
-
-**Sync with a decoder.** The first submission waits on `sync->wait_semaphore`, i.e. the frame is decoded. The last
-one signals `sync->signal_semaphore`, i.e. the frame is no longer read. These are exactly the semaphore and value
-pair that an FFmpeg `AVVkFrame` carries. `munet_frame_detect` returns once the detections are on the host; only
-those 32-byte records cross the bus.
+- `munet_frame_detect` returns once the detections are on the host.
+- `munet_frame_color` holds the YCbCr → RGB coefficients plus `mean` and `inv_std`, applied as
+  `(RGB/255 - mean) * inv_std`.
+- `sync` carries the decoder's timeline semaphore: the pipeline waits on `wait_semaphore` and signals
+  `signal_semaphore`. Pass `NULL` for host frames.
+- With more tiles than the program's batch size, the pipeline runs the program as many times as needed.
 
 ## Threads, errors and device loss
 
-- **Threads.** A program must not be used from two threads at once. Use one program per thread; several programs on
+- Threads: a program must not be used from two threads at once. Use one program per thread; several programs on
   one context are fine.
-- **Errors.** Functions returning a pointer return `NULL` on failure, and functions returning `int32_t` return
+- Errors: functions returning a pointer return `NULL` on failure, and functions returning `int32_t` return
   nonzero. `munet_last_error()` describes the most recent failure on the calling thread.
-- **Device loss.** A lost device (GPU reset, driver crash) fails every later run on it. Recover by reloading the
-  program; with a shared context, create a new context first.
+- Device loss: a lost device (GPU reset, driver crash) fails every later run on it and is never reused. Recover by
+  reloading the program. With a shared context, create a new context first and reload the programs on it.
 
 ## Diagnostics
 
-- `munet_gpu_ms(program)`: GPU time of the last run's compute section. It excludes transfers, and is negative if
+- `munet_gpu_ms(program)`: GPU time of the last run's compute section. It excludes transfers and is negative if
   unknown.
 - `munet_stats_json(program, buf, size)`: the device name, load / shader compile / device setup times, the number of
   autotuned kernels, kernel and memory counters, run counts and the last `gpu_ms`, as JSON.
@@ -314,17 +292,21 @@ those 32-byte records cross the bus.
   program loads, on drivers that expose `VK_KHR_pipeline_executable_properties`.
 - Vulkan validation layers (`VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`) are supported and expected to be clean.
 
-## Environment variables
+## C++ engine SDK
 
-Full list: [environment.md](environment.md).
+Releases also publish `munet-sdk-<version>-linux-<arch>.tar.gz` (x86_64, aarch64). It holds the engine's C++ core,
+not the C API above:
 
-| Variable | Effect |
-|---|---|
-| `MUNET_LICENSE`, `MUNET_LICENSE_FILE` | license key, or the file holding it (default `~/.config/munet/license.key`) |
-| `MUNET_CACHE_DIR` | SPIR-V and autotune cache (default `~/.cache/munet-next`), shared with Python |
-| `MUNET_GLSLANG` | path of `glslangValidator` |
-| `MUNET_VULKAN_LIBRARY` | explicit Vulkan loader path |
-| `MUNET_DISABLE_COOPMAT=1` | fp32 kernels only (debugging) |
-| `MUNET_SUBMIT_KERNELS=N` | split each run into submissions of at most N kernels (mobile drivers that reset on long submissions) |
-| `MUNET_SUBMIT_SYNC=1` | wait after each submission and name the kernel range on failure (diagnosing device loss) |
-| `MUNET_PIPELINE_STATS=1` | print driver statistics per kernel (registers, spills) to stderr at load |
+- `lib/libmunet_core.a`, the static engine library;
+- `include/munet/core.hpp`, the C++ graph API (`munet::Graph`, `munet::Plan`);
+- `lib/cmake/MuNet/`, a CMake package exporting `MuNet::core`.
+
+Point CMake at the extracted directory with `-DCMAKE_PREFIX_PATH=/path/to/munet-sdk-<version>-linux-<arch>`:
+
+```cmake
+find_package(MuNet CONFIG REQUIRED)
+target_link_libraries(app PRIVATE MuNet::core)   # then #include <munet/core.hpp>
+```
+
+It is a C++ ABI package: you need C++17 and a toolchain compatible with the release build. If yours differs, use the
+C API or build from source.

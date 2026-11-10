@@ -7,15 +7,16 @@ that explains it.
 
 | Name | What it does |
 |---|---|
-| `compile(fn=None, *, device="vulkan", precision="mixed", fuse=True, profile=False, autotune=None, recover=None)` | trace `fn` (a function or a module) into a GPU program; usable as `@mu.compile` or `@mu.compile(device=...)` ([training.md](training.md)) |
-| `devices()` | names of the Vulkan GPUs; `"vulkan:N"` is the N-th |
-| `device_info(index=None)` | memory, vendor, matrix-core support of a GPU ([gpus.md](gpus.md)) |
-| `save(program, path)` / `load(path, *, device, precision)` | `.mnet` files for Python, C, C++, Rust ([onnx.md](onnx.md#save-as-mnet-for-deployment)) |
-| `DataParallel(loss_fn, parameters, optimizer, devices, *, precision, split, max_rows)` | multi-GPU training: `.step(*batch)`, `.counts`, `.stats()` ([multi-gpu.md](multi-gpu.md)) |
-| `quantize(model, calib_data=None, *, scheme)` | quantize `Linear` layers in place ([quantization.md](quantization.md)) |
+| `compile(fn=None, *, device="vulkan", precision="mixed", fuse=True, profile=False, autotune=None, recover=None)` | trace `fn` (a function or a module) into a GPU program; usable as `@mu.compile` or `@mu.compile(device=...)` ([training.md](training.md)). `recover="rebuild"` recompiles and retries once after a GPU reset ([troubleshooting.md](troubleshooting.md#gpu-crashes-and-memory)) |
+| `devices()` | names of the Vulkan GPUs; `"vulkan:N"` is the N-th ([gpus.md](gpus.md#choose-a-gpu)) |
+| `device_info(index=None)` | memory, vendor, matrix-core support of a GPU; default index `MUNET_VULKAN_DEVICE` or 0 ([gpus.md](gpus.md#see-what-munet-detected)) |
+| `save(program, path)` / `load(path, *, device="vulkan", precision="mixed", fuse=True)` | `.mnet` files for Python, C, C++, Rust ([onnx.md](onnx.md#save-as-mnet-for-deployment)) |
+| `DataParallel(loss_fn, parameters, optimizer, devices, *, precision="fp32", fuse=True, split="even", max_rows=None)` | multi-GPU training: `.step(*batch)`, `.counts`, `.stats()`. Note the `"fp32"` default ([multi-gpu.md](multi-gpu.md)) |
+| `quantize(model, calib_data=None, *, scheme="w8a8_dynamic", observer="minmax", group_size=128, device="cpu")` | quantize `Linear` layers in place ([quantization.md](quantization.md)) |
 | `Tensor`, `Parameter`, `Buffer` | traced values, trainable weights, non-trained state |
+| `Result` | output of a compiled program (see below) |
 | `cat`, `stack`, `where`, `as_tensor`, `grad` | tensor functions |
-| `license()` | license status |
+| `license()` | license status dict: `status` (`"licensed"`, `"evaluation"`, `"invalid"`, `"expired"`), `customer`, `expires`, `error`, ... ([getting-started.md](getting-started.md#license-key)) |
 | `VulkanError`, `DeviceLostError` | GPU errors (`DeviceLostError` after a GPU reset) |
 | `metrics` | counters / histograms; `metrics.prometheus()` for scraping |
 
@@ -35,10 +36,10 @@ Returned by `mu.compile`, `from_onnx`, `from_torch` and `mu.load`.
 
 | Name | |
 |---|---|
-| `DataLoader(dataset, batch_size, *, shuffle, drop_last=True, seed, workers, prefetch, collate, shard)` | batches of NumPy arrays; `set_epoch(n)`, `len()` |
+| `DataLoader(dataset, batch_size=1, *, shuffle=False, drop_last=True, seed=0, workers=0, prefetch=2, collate=None, shard=None)` | batches of NumPy arrays; `set_epoch(n)`, `len()` |
 | `ArrayDataset(*arrays, transform=None)` | samples are rows of arrays |
 | `Dataset` | optional base class (`__len__`, `__getitem__`) |
-| `default_collate(samples)` | stacks samples field by field |
+| `default_collate(samples)` | stacks samples field by field; the default `collate` |
 
 ## Layers and functions: `munet.nn` ([training.md](training.md#models))
 
@@ -53,11 +54,11 @@ Returned by `mu.compile`, `from_onnx`, `from_torch` and `mu.load`.
 
 | Name | |
 |---|---|
-| `SGD(params, lr, momentum=0, weight_decay=0, nesterov=False, dampening=0)` | parameter groups; live `param_groups[i]["lr"]` |
-| `AdamW(params, lr=1e-3, betas, eps, weight_decay=0.01)` | parameter groups; live settings |
-| `MultiStepLR(optimizer, milestones, gamma)` | step per epoch |
-| `ModelEMA(model, decay, warmups)` | `update()` inside the step, `copy_to(model)` |
-| `clip_grad_norm_(params, max_norm)` | between `backward()` and `step()` |
+| `SGD(params, lr=0.01, momentum=0, weight_decay=0, nesterov=False, dampening=0)` | parameter groups; live `param_groups[i]["lr"]` |
+| `AdamW(params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)` | parameter groups; live settings |
+| `MultiStepLR(optimizer, milestones, gamma=0.1)` | step per epoch |
+| `ModelEMA(model, decay=0.9999, warmups=2000)` | `update()` inside the step, `copy_to(model)` |
+| `clip_grad_norm_(params, max_norm, norm_type=2.0)` | between `backward()` and `step()` |
 
 All have `state_dict()` / `load_state_dict()`.
 
@@ -70,8 +71,8 @@ and plain values ([training.md](training.md#checkpoints-and-resuming)).
 
 | Name | |
 |---|---|
-| `from_onnx(path, *, device, precision, input_shapes, int8, autotune, optimize, profile)` | import |
-| `from_torch(module, example_inputs, **from_onnx_options)` | import a PyTorch module through ONNX |
+| `from_onnx(path, *, device="vulkan", precision="mixed", input_shapes=None, int8=None, autotune=None, optimize=True, profile=False, native=False, max_specializations=8, fuse=True)` | import |
+| `from_torch(model, example_inputs, *, device="vulkan", fuse=True, **from_onnx_options)` | import a PyTorch module through ONNX (inference only) |
 | `to_onnx(program, path)` | export |
 | `SUPPORTED_ONNX` | supported operator names |
 
@@ -79,9 +80,9 @@ and plain values ([training.md](training.md#checkpoints-and-resuming)).
 
 | Name | |
 |---|---|
-| `calibrate_onnx(path, batches, *, observer="mse")` | int8 activation scales for `from_onnx(int8=...)` |
-| `autoquantize(path, calibration, validation, *, metric, tolerance)` | choose int8 layers by measured speed and accuracy |
-| `quantize(model, calib_data, *, scheme)` | `w8a8_dynamic`, `w8a8`, `w8`, `w4` for `Linear` layers |
+| `calibrate_onnx(path, batches, *, observer="mse", device="vulkan", bins=2048, native=False)` | int8 activation scales for `from_onnx(int8=...)` |
+| `autoquantize(model, calibration, validation=None, *, metric=None, tolerance=0.01, device="vulkan", autotune=True, observer="mse", ...)` | choose int8 layers of an ONNX model by measured speed and accuracy |
+| `quantize(model, calib_data=None, *, scheme="w8a8_dynamic", ...)` | `w8a8_dynamic`, `w8a8`, `w8`, `w4` for `Linear` layers |
 | `compare(reference, candidate, inputs)` | cosine / max / relative error |
 
 ## Training across machines: `munet.swarm`

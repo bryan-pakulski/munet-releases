@@ -1,7 +1,7 @@
 # Data loading
 
-`munet.data` turns a dataset into batches of NumPy arrays. It handles shuffling, background loading in worker
-threads, prefetching the next batches while the GPU runs, and sharding across GPUs or processes.
+`munet.data` turns a dataset into batches of NumPy arrays. It shuffles, loads samples in worker threads, prefetches
+the next batches while the GPU runs, and shards data across GPUs or processes.
 
 ```python
 from munet.data import ArrayDataset, DataLoader
@@ -14,9 +14,9 @@ for epoch in range(10):
 
 ## Datasets
 
-**In-memory arrays:** `ArrayDataset(*arrays)`. Sample `i` is `(a[i], b[i], ...)`. Without a transform, batches are
-sliced from the arrays in one step, which is the fastest option. `np.load(..., mmap_mode="r")` arrays work too and
-stream from disk.
+**In-memory arrays:** `ArrayDataset(*arrays, transform=None)`. Sample `i` is `(a[i], b[i], ...)`. Without a
+transform, each batch is sliced from the arrays in one step; this is the fastest option. Arrays from
+`np.load(..., mmap_mode="r")` work too and stream from disk.
 
 **Anything else:** a class with `__len__` and `__getitem__(i)` that returns one sample. A sample is an array, a
 number, or a tuple / list / dict of them:
@@ -49,7 +49,7 @@ Dict samples give dict batches: `{"image": ..., "boxes": ...}` → `batch["image
 
 ## Augmentation
 
-Per-sample transforms run in the worker threads:
+Per-sample transforms run in the worker threads (with `workers > 0`):
 
 ```python
 def augment(sample):
@@ -76,36 +76,40 @@ For a custom dataset, apply the transform inside `__getitem__`.
 | `shard` | None | `(index, count)`: iterate only this consumer's share of each epoch |
 | `seed` | 0 | shuffle seed |
 
-- **Epochs.** Each `for` loop over the loader is one epoch with a new shuffle order. Call `loader.set_epoch(n)` to
-  reproduce epoch `n`'s order, for example after resuming from a checkpoint.
+- **Epochs.** Each `for` loop over the loader is one epoch with a new shuffle order. `loader.set_epoch(n)` reproduces
+  epoch `n`'s order, for example after resuming from a checkpoint.
 - **Batch count.** `len(loader)` is the number of batches per epoch.
 
 ## Making it fast
 
 - **Keep the GPU fed.** Leave `prefetch` at 2 or more, so loading batch N+1 overlaps the GPU running batch N.
-- **Workers are threads.** They pay off when samples are loaded by code that releases the GIL: file reads, Pillow
-  decode/resize, NumPy. Pure-Python per-pixel code doesn't speed up with threads. Vectorize it with NumPy, or
-  preprocess once and save arrays.
+- **Workers are threads.** They help when loading code releases the GIL: file reads, Pillow decode/resize, NumPy.
+  Pure-Python per-pixel code doesn't get faster. Vectorize it with NumPy, or preprocess once and save arrays.
 - **Fastest path:** decode once, `np.save` the arrays, then `ArrayDataset(np.load("x.npy", mmap_mode="r"), ...)`.
 - **Don't read results every step.** Calling `loss.item()` each step makes the CPU wait for the GPU. Read it every
   N steps.
 
 ## Several GPUs or processes
 
-With `mu.DataParallel`, use **one** loader with the global batch size; DataParallel splits each batch across the
-GPUs.
+With `mu.DataParallel`, use one loader with the global batch size. DataParallel splits each batch across the GPUs
+([multi-gpu.md](multi-gpu.md)).
 
-When each GPU or process has its own program (separate processes, or one inference worker per GPU), shard the data:
+When each GPU or process runs its own program (separate processes, or one inference worker per GPU), shard the data
+with `shard=(index, count)`:
 
 ```python
 loader = DataLoader(dataset, batch_size=32, shuffle=True, seed=0, shard=(rank, world_size))
 ```
 
-Shards are disjoint, use the same shuffled order, and have the same number of batches. Use the same `seed` in every
-process. See [multi-gpu.md](multi-gpu.md).
+- Shards are disjoint, use the same shuffled order, and have the same number of batches.
+- Use the same `seed` in every process.
+- Iterate again (or call `loader.set_epoch(epoch)`) for the next epoch's order.
 
 ## Variable-size data
 
-Programs have static shapes, so every batch must have the same shape. Pad or resize to fixed sizes in `__getitem__`
-or `collate`. For detection, use a fixed maximum number of boxes plus a mask. Using several input sizes (e.g.
-multi-scale training) means compiling one step per size and picking the function that matches each batch.
+Programs have static shapes, so every batch must have the same shape.
+
+- Pad or resize to fixed sizes in `__getitem__` or `collate`.
+- For detection, use a fixed maximum number of boxes plus a mask.
+- For several input sizes (e.g. multi-scale training), compile one step per size and call the one that matches each
+  batch.

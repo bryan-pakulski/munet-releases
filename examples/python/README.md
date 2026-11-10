@@ -1,12 +1,12 @@
 # Python examples
 
-Each script runs on its own: `python examples/python/<script>.py --help`. They use `device="vulkan"` (GPU 0); set
-`MUNET_VULKAN_DEVICE=N` to use another GPU, or pass `--device cpu` where offered.
+Each script runs on its own; `python examples/python/<script>.py --help` lists its options. Scripts use
+`device="vulkan"` (GPU 0). Set `MUNET_VULKAN_DEVICE=N` to use another GPU, or pass `--device cpu` where offered.
 
 | Script | What it does | Needs |
 |---|---|---|
 | [train_classifier.py](train_classifier.py) | trains a CNN with a DataLoader, AdamW and an LR schedule; evaluates; checkpoints (`--resume`); exports `.mnet` and ONNX | nothing (synthetic data) |
-| [train_multi_gpu.py](train_multi_gpu.py) | the same model on every GPU with `DataParallel`; `--split auto|memory|even|3,2,1`, `--max-rows` | 2+ GPUs (works with 1) |
+| [train_multi_gpu.py](train_multi_gpu.py) | the same model on every GPU with `DataParallel`; `--split` takes `auto`, `memory`, `even` or weights like `3,2,1`; `--max-rows` caps rows per GPU | 2+ GPUs (works with 1) |
 | [infer_onnx.py](infer_onnx.py) | runs any ONNX model, times it, compares with ONNX Runtime (`--compare`), saves `.mnet` | `onnxruntime` for `--compare` |
 | [detect_yolo.py](detect_yolo.py) | YOLOv8/11 detection on an image: letterbox, GPU inference, NMS, boxes drawn to `*.det.jpg` | `pillow`, a YOLO ONNX file |
 | [quantize_int8.py](quantize_int8.py) | int8 calibration on a folder of images; accuracy and speed vs fp16; saves an int8 `.mnet` | `pillow` |

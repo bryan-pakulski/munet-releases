@@ -1,6 +1,6 @@
 """Bench suite manifest: ONNX models from usls (https://github.com/jamjamjon/usls, MIT; assets at
-https://github.com/jamjamjon/assets/releases). Each entry names a release asset and only what cannot be read from the
-graph: sizes for symbolic dimensions, demo images, and non-image inputs. Inputs are otherwise derived from the ONNX file:
+https://github.com/jamjamjon/assets/releases), Hugging Face (url=), local exports (export=, see export.py) and local
+files (local=, skipped when absent). Each entry names its source and only what cannot be read from the graph: sizes for symbolic dimensions, demo images, and non-image inputs. Inputs are otherwise derived from the ONNX file:
 4-D float inputs with 3 channels are images (the demo image, RGB in [0, 1], optionally normalized), everything else is
 seeded random data of the declared type.
 
@@ -43,14 +43,19 @@ class Model:
     image: str = "yolo/demo-det.jpg"
     notes: str = ""
     compare: str = ""                     # "detr": outputs (labels, boxes, scores) compared as matched detections
+    batch: int = 1                        # size of symbolic batch dimensions
+    url: str = ""                         # direct download (e.g. Hugging Face) instead of a usls release asset
+    export: str = ""                      # exported locally by export.py (torchvision, U-Net, Real-ESRGAN)
+    local: str = ""                       # local file (not downloaded); skipped when absent
+    local_env: str = ""                   # environment variable overriding `local`
 
     @property
-    def url(self):
-        return f"{BASE}/{self.release}/{self.file}"
+    def source(self):
+        return self.local or self.url or (f"export:{self.export}" if self.export else f"{self.release}/{self.file}")
 
 
-def detr_sizes(n=640):
-    return {"orig_target_sizes": Input(shape=(1, 2), kind="const", value=n, dtype="int64")}
+def detr_sizes(n=640, batch=1):
+    return {"orig_target_sizes": Input(shape=(batch, 2), kind="const", value=n, dtype="int64")}
 
 
 MODELS = [
@@ -101,6 +106,48 @@ MODELS = [
           inputs={"x": Input(shape=(1, 3, 48, 320), kind="image", image="svtr/1.png",
                              mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))}),
     Model("picodet-layout", "picodet", "layout-1x.onnx", "standard", "detect", size=800, image="picodet/demo-layout-1x.png"),
+    # --- batched detection ---
+    Model("yolo11m-det-b8", "yolo", "v11-m-det.onnx", "standard", "detect", batch=8),
+    Model("rtdetr-v1-r18-b4", "rtdetr", "v1-r18.onnx", "standard", "detect", inputs=detr_sizes(batch=4), compare="detr", batch=4),
+    Model("dfine-n-b4", "d-fine", "n-coco.onnx", "standard", "detect", inputs=detr_sizes(batch=4), compare="detr", batch=4),
+    # a local RT-DETR-style detector export (1280x1280 input, symbolic batch); skipped when the file is absent
+    Model("local-detr-1280-b3", "", "detr-1280.onnx", "standard", "detect", size=1280, batch=3, compare="detr",
+          inputs=detr_sizes(1280, 3), local="~/.cache/munet-bench/local/detr-1280.onnx", local_env="MUNET_BENCH_LOCAL_DETR"),
+    Model("local-detr-1280-b6", "", "detr-1280.onnx", "full", "detect", size=1280, batch=6, compare="detr",
+          inputs=detr_sizes(1280, 6), local="~/.cache/munet-bench/local/detr-1280.onnx", local_env="MUNET_BENCH_LOCAL_DETR"),
+    # --- classic CNN classifiers (torchvision exports: export.py) ---
+    Model("resnet50", "", "", "standard", "classify", size=224, norm=IMAGENET, image="yolo/demo-cls.jpg", export="resnet50"),
+    Model("efficientnet-b0", "", "", "standard", "classify", size=224, norm=IMAGENET, image="yolo/demo-cls.jpg", export="efficientnet-b0"),
+    Model("mobilenet-v3-large", "", "", "standard", "classify", size=224, norm=IMAGENET, image="yolo/demo-cls.jpg", export="mobilenet-v3-large"),
+    # --- segmentation ---
+    Model("segformer-b0-ade", "", "", "standard", "segment", size=512, norm=IMAGENET,
+          url="https://huggingface.co/Xenova/segformer-b0-finetuned-ade-512-512/resolve/main/onnx/model.onnx"),
+    Model("deeplabv3-r50", "", "", "standard", "segment", size=512, norm=IMAGENET, export="deeplabv3-r50"),
+    Model("unet", "", "", "standard", "segment", size=256, export="unet"),
+    Model("linknet-r18", "linknet", "felixdittrich92-r18.onnx", "standard", "ocr-det", size=1024, image="db/demo-paper.png"),
+    Model("birefnet-swin-t", "birefnet", "general-bb-swin-v1-tiny-epoch-232.onnx", "full", "matting", size=1024, norm=IMAGENET,
+          image="modnet/demo.png"),
+    # --- vision transformers ---
+    Model("swin-t", "", "", "standard", "classify", size=224, norm=IMAGENET, image="yolo/demo-cls.jpg", export="swin-t"),
+    Model("vit-b16", "", "", "standard", "classify", size=224, norm=IMAGENET, image="yolo/demo-cls.jpg", export="vit-b16"),
+    Model("deit-s", "deit", "s-distill.onnx", "standard", "classify", size=224, norm=IMAGENET, image="yolo/demo-cls.jpg"),
+    # --- text and audio encoders ---
+    Model("distilbert", "", "", "standard", "embed", url="https://huggingface.co/Xenova/distilbert-base-uncased/resolve/main/onnx/model.onnx",
+          inputs={"input_ids": Input(shape=(1, 128), kind="int", low=1000, high=20000, dtype="int64"),
+                  "attention_mask": Input(shape=(1, 128), kind="const", value=1, dtype="int64")}),
+    Model("bert-base", "", "", "standard", "embed", url="https://huggingface.co/Xenova/bert-base-uncased/resolve/main/onnx/model.onnx",
+          inputs={"input_ids": Input(shape=(1, 128), kind="int", low=1000, high=20000, dtype="int64"),
+                  "attention_mask": Input(shape=(1, 128), kind="const", value=1, dtype="int64"),
+                  "token_type_ids": Input(shape=(1, 128), kind="const", value=0, dtype="int64")}),
+    Model("whisper-tiny-encoder", "", "", "standard", "speech", url="https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/encoder_model.onnx",
+          inputs={"input_features": Input(shape=(1, 80, 3000), kind="normal")}),
+    # --- generative / restoration ---
+    Model("realesrgan-x4", "", "", "standard", "super-res", size=128, export="realesrgan-x4"),
+    Model("swin2sr-lightweight-x2", "swin2sr", "lightweight-x2-64.onnx", "standard", "super-res", size=256),
+    # (the published SD VAE ONNX files are fp16 / ORT contrib-op graphs: exported from the diffusers layout instead)
+    Model("sd-vae-decoder", "", "", "standard", "generate", export="sd-vae-decoder",
+          inputs={"images": Input(shape=(1, 4, 64, 64), kind="normal")}),
+    Model("lama", "", "", "standard", "inpaint", size=512, url="https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx"),
 ]
 
 TIERS = {"quick": 0, "standard": 1, "full": 2}

@@ -8,11 +8,12 @@
 | Train a model (loop, losses, optimizers, schedules, checkpoints, precision) | [training.md](training.md) |
 | Load training data (datasets, augmentation, workers, prefetch, sharding) | [data.md](data.md) |
 | Train on several GPUs, including different sizes and vendors | [multi-gpu.md](multi-gpu.md) |
+| Train across machines (owner and worker nodes) | [swarm.md](swarm.md) |
 | Import / export ONNX, import PyTorch | [onnx.md](onnx.md) |
 | Make inference fast (precision, autotuning, batching, measuring) | [inference.md](inference.md) |
 | Quantize (int8 convolutions, int8 / int4 linear layers, pre-quantized ONNX) | [quantization.md](quantization.md) |
 | Configure NVIDIA, Intel, AMD, mobile GPUs and containers | [gpus.md](gpus.md) |
-| GPUs MuNet has been validated on, and known issues | [tested-hardware.md](tested-hardware.md) |
+| See which GPUs are validated, and how fast they are | [tested-hardware.md](tested-hardware.md) |
 | Deploy from C or C++ | [c.md](c.md) |
 | Deploy from Rust | [../rust/README.md](../rust/README.md) |
 | Detect objects in video without copies (frame pipeline, FFmpeg, Vulkan interop) | [zero-copy.md](zero-copy.md) |
@@ -38,5 +39,4 @@
 ## Reference
 
 - [op_coverage.md](op_coverage.md): ONNX operator coverage.
-- [swarm.md](swarm.md): training across machines (owner and worker nodes).
 

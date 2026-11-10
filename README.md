@@ -23,6 +23,7 @@ Linux x86_64 and aarch64 (glibc 2.28+) are built for every release. Running on a
 | Train a model | [Training](docs/training.md) |
 | Feed training data (datasets, shuffling, workers, prefetch) | [Data loading](docs/data.md) |
 | Train on several GPUs, including different sizes (e.g. 24 + 12 + 8 GB) | [Multiple GPUs](docs/multi-gpu.md) |
+| Train across machines (owner and worker nodes) | [Training swarm](docs/swarm.md) |
 | Import or export ONNX, or import PyTorch | [ONNX](docs/onnx.md) |
 | Run models fast (precision, autotuning, batching, `.mnet`) | [Inference and performance](docs/inference.md) |
 | Quantize to int8 / int4 | [Quantization](docs/quantization.md) |
@@ -33,6 +34,7 @@ Linux x86_64 and aarch64 (glibc 2.28+) are built for every release. Running on a
 | Detect objects in video with zero copies | [Zero copy and video](docs/zero-copy.md) |
 | Look up an environment variable | [Environment variables](docs/environment.md) |
 | Fix an error | [Troubleshooting](docs/troubleshooting.md) |
+| Look up a Python function | [Python API](docs/python.md) |
 
 Runnable examples are in [examples/python](examples/python/README.md), [examples/c](examples/c/run_model.cpp) and
 [rust/examples](rust/examples). [examples/bench](examples/bench/README.md) checks correctness and speed of about 40

@@ -1,158 +1,198 @@
 # Training swarm: owner and native nodes
 
-Implemented in MuNet Next 0.2.0. The initial swarm trains deterministic, sample-independent dense models with mean squared error and SGD. It runs the existing C++ forward/backward graph on each node, using Vulkan or the explicitly selected CPU reference backend. RT-DETR and its distributed loss/normalization semantics remain future work.
+The training swarm trains one model across machines. One owner holds the weights and applies every optimizer
+update. Nodes compute gradients for chunks of each global batch and send them back. The result equals single-machine
+SGD on the global batch, up to floating-point differences.
 
-## Training semantics
+## Scope and limits
 
-The owner is the sole authority for weights, optimizer updates, sample coverage, and epoch completion. Each node holds a full model replica. The dataset is deterministically shuffled once per epoch and divided into fixed global batches. A global batch is one training round and one optimizer update, independent of how many workers happen to connect. Each round is divided into microbatch chunks, all based on the same immutable checkpoint.
+- Dense, deterministic models whose outputs are independent across samples.
+- Loss: mean squared error. Optimizer: SGD without momentum.
+- Nodes run the C++ forward/backward graph on Vulkan or on the CPU reference backend.
+- Owner and node run on Linux/POSIX.
+- Not supported: BatchNorm, detection losses and RT-DETR. They need a global normalization policy the swarm does
+  not have.
 
-For chunk `i` containing `n_i` samples, the node returns a mean loss and mean parameter gradient `g_i`. The owner waits for every chunk, accumulates results in manifest order, and computes:
+How training proceeds:
 
-\[
-g = \frac{\sum_i n_i g_i}{\sum_i n_i},\qquad
-\theta_{v+1}=\theta_v-\eta g.
-\]
+- The dataset is shuffled once per epoch into fixed global batches.
+- One global batch is one round and one optimizer update, however many workers connect.
+- The owner weights each chunk's gradient by its sample count, accumulates in float64 and applies a float32 update.
+- Workers joining or leaving change scheduling only, not the batch size, learning rate or sample coverage.
+- A disconnected node can finish work it already downloaded. It cannot produce later rounds without new weights.
 
-This preserves the selected global-batch SGD algorithm up to floating-point differences, including uneven final chunks. Owner reduction uses float64 accumulation, then a float32 gradient and float32 SGD update. The principle is data-parallel training: replicas process different samples and combine gradients before stepping. [PyTorch distributed training overview](https://docs.pytorch.org/tutorials/beginner/dist_overview.html).
+## Install the owner and node
 
-**Nodes do not run independent optimizer steps in this mode.** A disconnected node can complete already downloaded work from its assigned round. It cannot keep producing useful future rounds indefinitely without updated weights. Once all available copies of a chunk disappear, that round waits for a capable node to finish a retry. Joining or losing workers changes scheduling, not the global batch size, learning rate, or sample coverage.
+`pip install munet-nn` provides both commands on Linux:
 
-Local-SGD/FedAvg is a separate planned mode for longer offline intervals: workers perform multiple local updates and later merge model deltas. It changes the optimization algorithm and needs its own treatment of data partitioning, weighting, drift, staleness, and convergence. It must not be presented as equivalent to arbitrary single-owner SGD. [McMahan et al., Communication-Efficient Learning of Deep Networks from Decentralized Data](https://arxiv.org/abs/1602.05629).
+- `munet-node` runs the packaged C++ worker.
+- `munet-server` runs the owner.
 
-## A chunk's lifetime
+Or use the standalone archives, which need no Python install (the server bundles CPython):
 
-```mermaid
-flowchart TD
-    P["Pending chunk"] --> L["Issued lease"]
-    L --> C["Cached inputs and checkpoint"]
-    C --> R["Local gradient computation"]
-    R --> O["Durable result outbox"]
-    O --> V{"Owner validates result"}
-    V -->|"First valid result"| A["Accepted once"]
-    V -->|"Already accepted"| K["Acknowledge retry"]
-    L -->|"Lease expires"| P
-    O -->|"Connection unavailable"| O
-    A --> B{"All round chunks accepted?"}
-    B -->|"Yes"| U["Commit weights and next version"]
-```
-
-Work may be computed more than once; a chunk contributes at most once. An expired attempt is still allowed to win while its chunk is uncommitted and its checkpoint is current. A replacement lease does not invalidate already useful computation. The first valid result wins; other issued attempts are acknowledged as already completed. A repeated accepted attempt must carry an identical payload. Unknown attempts and incompatible job, program, data, parameter shape, sample count, or checkpoint identities are rejected. Non-finite results are rejected.
-
-Leases use owner time. Nodes do not need synchronized clocks. The worker renews leases between prefetch and execution; the HTTP API also supports explicit heartbeats. The current binary does not send background heartbeats during a long kernel. Such work can be retried after expiry, with duplicate suppression preserving correctness. Lease duration should cover a normal bundle's download and computation time, and owner wall-clock jumps can cause early retries or delayed reassignment.
-
-## Durable owner
-
-`python -m munet.swarm JOB_DIRECTORY` runs a small Python control plane using the standard HTTP server and SQLite, plus NumPy for gradient aggregation/SGD. Numerical worker execution remains C++. There is no Redis, message broker, PyTorch execution engine, or mandatory distributed framework.
-
-The job directory contains:
-
-| Item | Purpose |
-|---|---|
-| `job.json` | Immutable job identity, sample manifest, round structure, learning rate and profile references |
-| `artifacts/` | SHA-256 addressed programs, data chunks, checkpoints and accepted results |
-| `owner.sqlite`, WAL and SHM | Workers, leases, accepted chunk pointers, round commits and current checkpoint |
-| `owner.lock` | Exclusive process lock for one owner |
-
-The owner serializes writes with SQLite transactions in WAL mode and `synchronous=FULL`. Artifacts are atomically renamed and fsynced before the journal may reference them. Acceptance of the last chunk, the SGD update, its new checkpoint pointer, and advancement to the next round share one transaction. A crash before commit leaves the previous checkpoint authoritative; a crash afterward makes retries idempotent. Orphan artifacts left by a failed transaction are harmless and currently retained.
-
-Restart using the same directory and configuration. Existing leases and completed chunks survive. Never start independent owners from copied journals for the same live job. A local process lock prevents two owners opening this directory; distributed owner failover, consensus, and split-brain fencing are not implemented. Keep the owner state on a reliable local filesystem. Stop the owner before copying its full job directory for a simple consistent backup, or use a proper SQLite backup/snapshot procedure.
-
-An epoch is complete only when all its rounds are committed and all original samples have contributed exactly once. `GET /v1/status` exposes the checkpoint version, accepted sample count, completed epochs, per-round losses, last-seen worker timestamps, and throughput estimates. There is no fixed world size or persistent worker connection.
-
-## Native node
-
-`munet-node` is a C++17 executable. It links the MuNet runtime, libcurl and OpenSSL. Its JSON parser is vendored nlohmann/json 3.11.3 under its included MIT license. A Vulkan build additionally requires the Vulkan loader and a working device driver. Python, PyTorch, NumPy, ONNX, and a shader compiler are not needed on nodes.
-
-The owner compiles portable SPIR-V when preparing a Vulkan job. Nodes reconstruct the native graph/plan, validate generated-source hashes and arena size against the program, and let the Vulkan driver compile device pipelines. The same resident execution plan is reused while the profile is unchanged. Parameters stay on the device across chunks of the same round; the next checkpoint explicitly updates them. One profile is kept resident at a time to bound device allocations. Plans/pipelines are recreated after a node process restart.
-
-Each node advertises runtime ABI, backend, device name, float32 support, storage-buffer limit, memory budget, maximum microbatch, host memory and logical thread count. Vulkan heap capacity is a capacity query, not a measurement of currently free memory. `--memory-mib` allows a conservative operator budget. Initial throughput can be supplied with `--samples-per-second`; otherwise a node starts with one chunk and self-reports measured samples/second after real work. This estimate is persisted locally. The owner maintains a throughput EWMA and sizes later bundles toward `--target-seconds`, capped by `--max-bundle`. It assigns only profiles that fit the advertised arena and staging budget and batch limit.
-
-These are scheduling hints, not performance guarantees. Shared GPU memory, host JSON/graph allocations, other applications, and thermal limits can still prevent execution. A failed assignment is retained locally; the owner retries it after lease expiry. Automatic OOM-driven profile changes, per-worker quarantine/backoff, fair-share scheduling, bandwidth-aware tuning, and dynamic microbatch compilation are future work. Choose a microbatch that fits the smallest intended worker. A node must fit the **whole model plus its microbatch**; the swarm does not combine node memory or shard one model.
-
-The node state directory contains its persistent identity, verified artifact cache, pending assignments, result outbox, and retained failed/rejected records. Data and programs download with HTTP Range support into `.part` files and are verified by SHA-256 before use. Cached work executes even when the owner is offline. Results are written and fsynced before upload, and removed only after acceptance or duplicate acknowledgement. Restart with the same node state directory and owner URL to continue. Each process needs its own state directory; a file lock prevents accidental sharing.
-
-## Build and run
-
-The implemented owner and node durability layer currently target Linux/POSIX. Release CI targets Linux x86-64 and aarch64 packages; physical ARM devices, other operating systems and mobile deployment still need validation or ports. See installation and releases for pip commands and standalone binaries. Build the worker for each target architecture; one binary does not run on every operating system/CPU.
-
-On a Linux build machine:
+1. Download the matching `munet-node`, `munet-server` and `munet-sdk` archives and `SHA256SUMS-linux-ARCH` from
+   [munet-releases](https://github.com/bryan-pakulski/munet-releases/releases).
+2. Verify them: `sha256sum --check SHA256SUMS-linux-ARCH`. The check expects all three archives.
+3. Extract them into a directory you own. Keep the directory structure: the node uses relative library paths and
+   the server needs its `_internal` directory.
+4. Add each extracted `bin` directory to `PATH`.
 
 ```bash
-sudo apt-get install build-essential cmake libvulkan-dev glslang-tools libcurl4-openssl-dev libssl-dev
-python -m pip install .
-
-# The node build has no Python build dependency.
-cmake -S . -B build-node -DMUNET_PYTHON=OFF -DMUNET_SWARM_NODE=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build-node -j
-
-python examples/swarm_mlp.py prepare demo-job --epochs 10
+sha256sum --check SHA256SUMS-linux-x86_64
+tar -xzf munet-node-VERSION-linux-x86_64.tar.gz
+tar -xzf munet-server-VERSION-linux-x86_64.tar.gz
+munet-node-VERSION-linux-x86_64/bin/munet-node --version
+munet-server-VERSION-linux-x86_64/bin/munet-server --version
 ```
 
-For CPU reference work, also set `-DMUNET_VULKAN=OFF` on the worker build, prepare with `--cpu-only`, and select `--device cpu`. A CPU-only MuNet Python installation can prepare Vulkan jobs if `glslangValidator` is available: only the nodes need a Vulkan runtime for execution.
+Requirements:
 
-Set the same enrolment secret of at least 32 characters as `MUNET_SWARM_TOKEN` on the owner and authorized workers. A node presents it only to `/v1/register`, which returns a node-scoped token (stored hashed by the owner, kept in the node's `worker.json`) used for lease, heartbeat and result requests; registering again rotates it. Revoke a node on a stopped owner with `munet-server JOB --revoke WORKER_ID`: its token stops working (401), it cannot re-register (403) and its open leases expire. Use a securely supplied environment variable; do not put it in a URL or command-line argument. For example, generate a value once with `python -c 'import secrets; print(secrets.token_urlsafe(32))'` and distribute it through your normal secret configuration.
+- Nodes need no Python, PyTorch, NumPy, ONNX or shader compiler. Vulkan nodes need the Vulkan loader and a driver.
+- Preparing a job for Vulkan nodes needs `glslangValidator` on the preparing machine. Nodes receive compiled SPIR-V.
 
-Start the owner and nodes in separate terminals:
+## Run a training job
 
-```bash
-# Owner: defaults to loopback.
-python -m munet.swarm demo-job --port 8765
+1. Prepare a job directory with [`create_job`](#custom-models). The source tree has a demo:
 
-# Node A
-./build-node/munet-node --owner http://127.0.0.1:8765 --device vulkan:0 --state node-a
+   ```bash
+   python examples/swarm_mlp.py prepare demo-job --epochs 10
+   ```
 
-# Node B: another device on this host, or a separate machine pointed at the owner.
-./build-node/munet-node --owner http://127.0.0.1:8765 --device vulkan:1 --state node-b
-```
+   `--cpu-only` omits SPIR-V, for a machine without `glslangValidator`. Such a job accepts only CPU nodes. CPU nodes
+   can also join a normal job.
 
-Use a device index actually present on each host. A CPU reference worker can join the same Vulkan-enabled job with `--device cpu`.
+2. Set the same `MUNET_SWARM_TOKEN` on the owner and on every node. It must have at least 32 characters. Generate one
+   with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. Pass it through the environment, never in a
+   URL or command-line argument.
 
-For remote connections, serve HTTPS directly with `--bind 0.0.0.0 --cert server.crt --key server.key`, or use a properly configured HTTPS reverse proxy to a loopback owner. libcurl verifies server certificates and hostnames, and does not forward credentials through redirects. Set `MUNET_CA_BUNDLE` to supply a private CA bundle; otherwise the node uses the host trust store. HTTPS uses TLS 1.2+ with forward-secret AEAD ciphers, and the handshake runs on the request thread so slow clients cannot stall the owner. `--client-ca ca.pem` additionally requires client certificates signed by that CA (mTLS). Each client IP and each node is rate limited (`--rate`, default 20 requests/s, `--burst`, default twice the rate; `--rate 0` disables) with `429` and `Retry-After`, and at most `--max-connections` (default 64) requests are handled at once. A private tunnel/network may use explicit `--allow-http` on both non-loopback endpoints. Plaintext does not protect tokens or model/data contents on its own.
+3. Start the owner and the nodes, each in its own terminal:
 
-Authorized nodes are trusted with model weights, assigned data and computation. The shared token is admission control, not per-node attestation. Result validation prevents malformed/duplicate updates; it cannot prove a malicious worker computed an honest gradient. Public anonymous workers, Byzantine verification, per-worker credentials/revocation, privacy-preserving aggregation and production ingress hardening are outside this prototype.
+   ```bash
+   munet-server demo-job --port 8765        # listens on 127.0.0.1 by default
+   munet-node --owner http://127.0.0.1:8765 --state node-a --device vulkan:0
+   munet-node --owner http://127.0.0.1:8765 --state node-b --device vulkan:1
+   ```
 
-After training, stop the owner and export its checkpoint:
+   - Use a device index that exists on each host, or `--device cpu` for the CPU reference backend.
+   - Give each node process its own `--state` directory.
 
-```bash
-python -m munet.swarm demo-job --status
-python examples/swarm_mlp.py export demo-job --output trained.mnet --onnx
-```
+4. Check progress, then export after training:
 
-The resulting inference graph uses the existing `.mnet` and ONNX converters. Swarm job/journal files are a separate experimental format, not an ONNX training archive. You can load the latest weights into your own native model with `Owner.load_into(model)` and then use the usual `mu.compile`, `mu.save`, and ONNX export flow.
+   ```bash
+   munet-server demo-job --status           # reads the journal of a stopped owner
+   python examples/swarm_mlp.py export demo-job --output trained.mnet --onnx
+   ```
 
-## API for custom models
+   In your own code, `Owner(job_dir).load_into(model)` loads the latest weights. Then use the normal `mu.compile`,
+   `mu.save` and ONNX export.
+
+## Custom models
 
 ```python
 from munet.swarm import create_job
 
 create_job(
     model, x, target, "my-job",  # finite float32 arrays [samples, ...]
-    global_batch_size=32,       # defines optimizer semantics
-    micro_batch_size=4,         # smallest scheduling/memory unit
+    global_batch_size=32,       # defines the optimizer semantics
+    micro_batch_size=4,         # smallest scheduling and memory unit
     epochs=10, lr=0.03, seed=42,
-    include_vulkan=True,
+    include_vulkan=True,        # False: CPU nodes only, no glslangValidator needed
 )
 ```
 
-The prototype fixes the loss to MSE with exactly matching prediction/target shapes and SGD without momentum. The caller must supply a deterministic model whose outputs are independent across samples. Batch-coupled operations in a custom `forward`, even if traceable, violate this contract. Detection losses with variable object counts need explicit global numerator/denominator handling, while BatchNorm needs an explicit frozen/local/synchronized policy. Merely adding RT-DETR's operators will not settle those swarm semantics.
+The model must meet this contract:
 
-## Protocol and current bounds
+- The loss is MSE with matching prediction and target shapes.
+- The model is deterministic and its outputs are independent across samples. Operations that couple samples in a
+  batch break the contract, even when they trace.
+- The model fits the [limits](#limits), including at most 100,000 parameter values.
 
-| Endpoint | Function |
+## Authentication
+
+- A node presents `MUNET_SWARM_TOKEN` only to `/v1/register`. The owner returns a node token, stores it hashed, and
+  the node keeps it in `worker.json`. Registering again rotates it.
+- Revoke a node on a stopped owner with `munet-server JOB --revoke WORKER_ID`. Its token then fails with 401,
+  re-registering fails with 403, and its open leases expire.
+
+Authorized nodes see the model weights and their assigned data. Tokens control admission; they do not prove what code
+a node runs. The owner rejects malformed and duplicate results, but a malicious node could send a wrong gradient.
+Public anonymous workers are out of scope.
+
+## Remote connections
+
+The owner listens on loopback by default. A non-loopback listener needs TLS or `--allow-http`.
+
+- **HTTPS:** `munet-server JOB --bind 0.0.0.0 --cert server.crt --key server.key`, or an HTTPS reverse proxy to a
+  loopback owner. TLS 1.2+ with forward-secret AEAD ciphers.
+- **Certificates:** nodes verify certificates and hostnames and do not forward credentials on redirects.
+  `MUNET_CA_BUNDLE` sets a private CA bundle; otherwise nodes use the host trust store.
+- **mTLS:** `--client-ca ca.pem` requires client certificates signed by that CA.
+- **Rate limits:** per client IP and per node, answered with 429 and `Retry-After`. `--rate` (default 20 requests/s;
+  0 disables), `--burst` (default twice the rate), `--max-connections` (default 64 concurrent requests).
+- **Plain HTTP:** `--allow-http` on both the owner and the node, only on a private network. Plaintext exposes tokens,
+  weights and data.
+
+## Operating the owner
+
+The job directory holds:
+
+| Item | Purpose |
 |---|---|
-| `POST /v1/register` | Stable worker identity and capability report |
-| `POST /v1/lease` | Lease a same-checkpoint bundle or report waiting/completed |
-| `POST /v1/heartbeat` | Renew live, uncompleted issued attempts |
-| `POST /v1/results` | Validate and durably accept/acknowledge a mean gradient result |
-| `GET /v1/artifacts/{sha256}` | Immutable, authenticated, resumable artifact download |
-| `GET /v1/status` | Durable progress and scheduling observations |
+| `job.json` | job identity, sample manifest, rounds, learning rate, profiles |
+| `artifacts/` | programs, data chunks, checkpoints and accepted results, addressed by SHA-256 |
+| `owner.sqlite` (+ WAL, SHM) | workers, leases, accepted chunks, round commits, current checkpoint |
+| `owner.lock` | lock that allows one owner per directory |
 
-Every endpoint requires bearer authentication. Protocol ABI is `munet-swarm-13`; program code generation must match between owner and node. Dtype is float32. A job is limited to 100,000 parameter values; artifacts to 256 MiB each; result uploads to 32 MiB. These conservative limits keep the JSON-based transport a usable small-model prototype. Dataset chunks and all epoch manifests are materialized ahead of time, and cached artifacts/results are not automatically garbage-collected. The scheduler, database, full-gradient traffic, and owner CPU aggregation have not been benchmarked at scale.
+- Restart with the same directory and options. Leases and completed chunks survive.
+- Never run two owners on copies of one live job. The lock only protects one directory; there is no failover.
+- Keep the job directory on a reliable local filesystem.
+- Back up by stopping the owner and copying the directory, or with an SQLite backup.
+- An epoch is complete when all its rounds are committed and every sample contributed exactly once.
+- `GET /v1/status` (and `--status`) reports the checkpoint version, accepted samples, completed epochs, per-round
+  losses, last-seen time per worker and throughput estimates.
 
-Forward/backward computation remains on the selected device. Returning gradients to the owner and distributing checkpoints necessarily uses explicit host staging/network transfers in this implementation. It does not preserve the single-device prototype's zero-gradient-readback replay behavior across the network. Large-model WAN training needs binary tensor streaming, resumable uploads, compression/bucketing, overlapping transfers, bounded retention, efficient optimizer state, and measured owner bottlenecks. Same-site fast collectives and occasional-connectivity local-SGD should be distinct scheduling/algorithm options over the same compiler/runtime.
+Owner scheduling options:
 
-## Validation
+| Option | Default | Effect |
+|---|---|---|
+| `--lease-seconds` | 120 | how long a node holds a bundle before it is reissued. Cover a bundle's download and compute time. |
+| `--target-seconds` | 30 | bundle size target, from each node's measured throughput |
+| `--max-bundle` | 4 | most chunks per bundle (1 to 64) |
 
-The suite covers analytical SGD equivalence and exact sample coverage, native two-node MLP training against PyTorch with uneven chunks, mixed CPU/software-Vulkan workers contributing to the same rounds, capability filtering, lease renewal, expired-attempt races, concurrent duplicate delivery, malformed/incompatible results, an injected crash before optimizer commit, actual node process termination, offline native computation, durable outbox replay, owner restarts, lost acknowledgements, authentication, and resumed downloads. See the validation report for the executed results and limits.
+## Operating nodes
 
-Build with `python tools/build.py --cmake-arg=-DMUNET_SWARM_NODE=ON`, then run `PYTHONPATH=python python tools/test.py --vulkan-validation --swarm`. Set `MUNET_SWARM_NODE` to an alternate worker executable. The `--swarm` gate fails if that binary is missing. Remote WAN behavior, physical heterogeneous GPUs, TLS deployment, throughput scaling and training quality beyond the small deterministic MLP remain unvalidated.
+The state directory holds the node identity, a verified artifact cache, pending assignments, a result outbox and
+failed or rejected records.
+
+- One state directory per process; a file lock enforces it.
+- Restart with the same state directory and owner URL to continue.
+- Cached work runs while the owner is offline. Results are fsynced before upload and kept until the owner
+  acknowledges them.
+- A failed assignment is retried after its lease expires. Leases use owner time, so clocks need no sync.
+- The node sends no heartbeats during a long kernel. If that outlasts the lease, the chunk may be computed twice; only
+  one result counts.
+
+A node must fit the whole model plus its microbatch: the swarm does not shard models. Choose a microbatch that fits
+the smallest worker.
+
+| Node option | Default | Effect |
+|---|---|---|
+| `--device` | `vulkan:0` | `vulkan:N` or `cpu` |
+| `--state` | `munet-node-state` | state directory |
+| `--name` | `node` | name reported to the owner (part of its capabilities in the status) |
+| `--memory-mib` | RAM/4; on Vulkan at most half the device heap | memory budget the owner schedules against |
+| `--max-batch` | 1024 | largest microbatch the node accepts |
+| `--samples-per-second` | measured | initial throughput estimate |
+| `--poll-seconds` | 2 | wait between bundles (0.01 to 60) |
+| `--once` | off | process one bundle and exit: 0 done, 1 compute failed, 2 work or results still pending |
+
+## Limits
+
+- Six endpoints, all bearer-authenticated: `POST /v1/register`, `/v1/lease`, `/v1/heartbeat`, `/v1/results`,
+  `GET /v1/artifacts/{sha256}`, `/v1/status`.
+- Protocol ABI `munet-swarm-13`: owner and node must be the same MuNet version, because generated kernels must match.
+- float32 only.
+- At most 100,000 parameter values per job, 256 MiB per artifact and 32 MiB per result upload.
+- Data chunks and all epoch manifests are written ahead of time. Cached artifacts and results are not
+  garbage-collected.
+- Not benchmarked at scale.

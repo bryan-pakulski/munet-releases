@@ -2,15 +2,6 @@
 
 How to run models fast from Python, and what carries over to C, C++ and Rust.
 
-- [Load once, call many times](#load-once-call-many-times)
-- [Precision](#precision)
-- [Autotuning](#autotuning)
-- [Batching](#batching)
-- [int8](#int8)
-- [Measure](#measure)
-- [Checklist](#checklist)
-- [Example: object detection end to end](#example-object-detection-end-to-end)
-
 ## Load once, call many times
 
 ```python
@@ -27,9 +18,17 @@ What a call does:
   every kernel, and reads back only the outputs you `.numpy()`.
 - **Compiling is the expensive part.** Keep the program object alive, and don't rebuild it per request.
 - **`.mnet` loads faster than ONNX import.** It skips the ONNX parsing and graph optimization, and is what C, C++ and
-  Rust load: `munet.save(model, "model.mnet")`.
+  Rust load ([onnx.md](onnx.md#save-as-mnet-for-deployment)).
 - **Threads.** One program serializes its own calls. For parallel requests, load one program per thread or per GPU.
   Calls release the GIL.
+
+### Kernel cache
+
+Compiled kernels (SPIR-V), driver pipeline caches and autotune results live in `MUNET_CACHE_DIR` (default
+`~/.cache/munet-next`). Python, C, C++ and Rust share it.
+
+- Copy the directory to deployment machines to skip compilation there.
+- A read-only directory disables caching; programs still run.
 
 ## Precision
 
@@ -37,13 +36,14 @@ What a call does:
 |---|---|---|---|
 | `"fp32"` | float32 | 1x | exact reference |
 | `"mixed"` (default) | fp16 inputs, fp32 accumulation, on tensor / matrix cores | ~2-3x fp32 | relative error ~1e-3; safe default |
+| `"mixed_safe"` | as `"mixed"`, plus rescaled matmul gradients | as `"mixed"` | training only: use it when training stalls or diverges in `"mixed"` |
 | `"fp16"` | fp16 inputs and accumulation | up to 2x `"mixed"` on GPUs with fast fp16 accumulation (NVIDIA GeForce RTX 30/40), same as `"mixed"` elsewhere | validate per model |
 
-Everything outside matmuls and convolutions (activations, normalization, softmax) computes in fp32 in every mode.
-On GPUs without cooperative-matrix support, every mode runs fp32 kernels.
+- Everything outside matmuls and convolutions (activations, normalization, softmax) computes in fp32 in every mode.
+- On GPUs without cooperative-matrix support, every mode runs fp32 kernels.
 
 Start with `"fp16"` for inference. If outputs differ too much from `"fp32"`, use `"mixed"`.
-[examples/python/infer_onnx.py](../examples/python/infer_onnx.py) `--compare` checks against ONNX Runtime.
+[examples/python/infer_onnx.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/infer_onnx.py) `--compare` checks against ONNX Runtime.
 
 ## Autotuning
 
@@ -55,9 +55,8 @@ model = from_onnx("model.onnx", input_shapes=..., precision="fp16", autotune=Tru
 model(example)                          # tunes during this call (default budget: 30 s per program)
 ```
 
-- **Shared cache.** Results are cached per GPU model, driver, precision and kernel shape in `MUNET_CACHE_DIR`
-  (default `~/.cache/munet-next`). Every later load of the same shapes on the same GPU uses them, from Python, C,
-  C++ or Rust.
+- **Shared cache.** Results are cached per GPU model, driver, precision and kernel shape in the kernel cache. Every
+  later load of the same shapes on the same GPU uses them, from Python, C, C++ or Rust.
 - **Tune what you deploy.** Run it once per GPU model, with the batch sizes and precision you ship. To deploy, copy
   the cache directory along with the `.mnet`, or run the tuning step on the target machine.
 - **Budget.** `MUNET_AUTOTUNE_BUDGET_S=120` raises the per-program time limit. `MUNET_AUTOTUNE=1` turns tuning on
@@ -76,24 +75,17 @@ especially for small models.
 
 ## int8
 
-CNNs (YOLO, ResNet backbones, RT-DETR's backbone) can run their convolutions in int8. Calibrate on a few hundred real
-inputs, then import with the scales:
+CNN convolutions can run in int8 after calibration. The gain depends on model size: large convolutions gain most,
+tiny models little. Check accuracy on your validation set.
 
-```python
-from munet.quantization import calibrate_onnx
-scales = calibrate_onnx("model.onnx", [(x,) for x in calibration_images])
-model = from_onnx("model.onnx", input_shapes=..., precision="fp16", int8=scales)
-```
-
-The gain depends on the model: large convolutions gain most, tiny models little. Always check accuracy on your
-validation set. Details and the selection tool are in [quantization.md](quantization.md); a runnable example is
-[examples/python/quantize_int8.py](../examples/python/quantize_int8.py).
+How to calibrate and choose layers: [quantization.md](quantization.md). Runnable example:
+[examples/python/quantize_int8.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/quantize_int8.py).
 
 ## Measure
 
 ```python
 model.stats()["gpu_ms"]       # GPU time of the last call (compute only)
-model.stats()                 # kernels, memory (arena_bytes), upload/download bytes, compile times, int8 kernel count
+model.stats()                 # kernels, memory (arena_bytes), upload/download bytes, compile times, int8 kernel counts, device
 ```
 
 For a per-kernel breakdown, compile with `profile=True`. It serializes the kernels, so use it to find hot spots, not
@@ -127,11 +119,11 @@ When timing:
 7. Read back only the outputs you need, as late as possible.
 8. For video, use the GPU frame pipeline and zero copy ([zero-copy.md](zero-copy.md)).
 
-GPU-specific settings (NVIDIA cooperative matrix 2, Intel clocks and video decode, AMD) are in [gpus.md](gpus.md).
+GPU-specific settings: [gpus.md](gpus.md).
 
 ## Example: object detection end to end
 
-[examples/python/detect_yolo.py](../examples/python/detect_yolo.py) covers the whole path for a YOLO model:
+[examples/python/detect_yolo.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/detect_yolo.py) covers the whole path for a YOLO model:
 
 - letterbox pre-processing;
 - GPU inference;

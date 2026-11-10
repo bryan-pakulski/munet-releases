@@ -1,8 +1,8 @@
 # Training
 
-MuNet training looks like PyTorch, with one difference: you put the training step in a function and compile it.
-The first call traces the function and builds one GPU program for forward, loss, backward and optimizer update.
-Every later call replays that program, and weights and optimizer state stay on the GPU between calls.
+MuNet training looks like PyTorch, except that you put the training step in a function and compile it. The first
+call traces the function into one GPU program: forward, loss, backward and optimizer update. Later calls replay that
+program. Weights and optimizer state stay on the GPU between calls.
 
 Complete runnable example: [examples/python/train_classifier.py](../examples/python/train_classifier.py). It covers
 data loading, augmentation, training, evaluation, an LR schedule, checkpoint/resume, and export to `.mnet` and ONNX.
@@ -50,7 +50,7 @@ for epoch in range(20):
 - **Outputs** are `Result`s. `.item()` and `.numpy()` read them back and wait for the GPU, so don't call them every
   step if you care about speed. A `Result` is valid until the next call of the same function.
 - **Return anything you want to watch:** `return loss, accuracy` gives a tuple of `Result`s.
-- **The first call compiles.** It takes seconds, and kernels are cached on disk for the next run. Later calls take
+- **The first call compiles.** It takes seconds; kernels are cached on disk for the next run. Later calls take
   milliseconds.
 
 ## Models
@@ -118,7 +118,7 @@ no_decay = [p for n, p in model.named_parameters() if p.ndim <= 1]
 optimizer = mu.optim.AdamW([{"params": decay}, {"params": no_decay, "weight_decay": 0.0}], lr=1e-3)
 ```
 
-Learning rates and other group settings are **live**. Change them between calls and the next step uses them, with no
+Learning rates and other group settings are live. Change them between calls and the next step uses them, with no
 recompile:
 
 ```python
@@ -138,9 +138,8 @@ for step, (x, y) in enumerate(loader):
 
 ## Evaluation
 
-Compile a second function for inference. Switching `model.eval()` / `model.train()` is all that is needed, because
-compiled functions re-trace automatically when the mode changes. In eval mode BatchNorm uses running statistics and
-Dropout is off.
+Compile a second function for inference. Switch with `model.eval()` / `model.train()`: compiled functions re-trace
+automatically when the mode changes. In eval mode BatchNorm uses running statistics and Dropout is off.
 
 ```python
 @mu.compile
@@ -156,7 +155,7 @@ model.train()
 
 Both functions share the same parameters, so `predict` always sees the latest weights.
 
-Compiled functions have **static shapes**: a different batch size needs its own compiled function. Use a validation
+Compiled functions have static shapes: a different batch size needs its own compiled function. Use a validation
 batch size that divides the set, or `drop_last=False` with a second function for the last batch.
 
 ## Checkpoints and resuming
@@ -174,22 +173,19 @@ scheduler.load_state_dict(state["scheduler"])
 loader.set_epoch(state["epoch"] + 1)          # same shuffle order as an uninterrupted run
 ```
 
-- **Atomic writes.** `save_state` writes atomically (temporary file, then rename), so a crash never leaves a broken
-  checkpoint.
+- **Atomic writes.** `save_state` writes a temporary file, then renames it. A crash never leaves a broken checkpoint.
 - **What it stores.** It takes nested dicts/lists of float32 arrays and plain Python values.
-- **Portable.** Checkpoints work on any GPU: resume on a different card or vendor.
+- **Portable.** Resume on a different GPU or vendor.
 
 ## Precision
 
-`mu.compile(..., precision=...)`:
+Set it with `mu.compile(..., precision=...)`. Full table: [inference.md](inference.md#precision).
 
-| Precision | What it does | Use for |
-|---|---|---|
-| `"mixed"` (default) | matmuls and convolutions use fp16 inputs with fp32 accumulation on tensor/matrix cores; everything else fp32; convolution gradients are rescaled so small values don't underflow | normal training |
-| `"mixed_safe"` | `"mixed"`, plus rescaling of matmul gradients too | models with very small gradients, or training that stalls or diverges in `"mixed"` |
-| `"fp32"` | full float32 | debugging, reference results |
+- `"mixed"` (default): use it for normal training.
+- `"mixed_safe"`: also rescales matmul gradients. Try it if training stalls or diverges in `"mixed"`.
+- `"fp32"`: for debugging and reference results.
 
-No loss scaling code is needed. GPUs without cooperative-matrix support run fp32 in every mode.
+No loss-scaling code is needed. GPUs without cooperative matrices run fp32 in every mode. `"fp16"` is for inference.
 
 ## Gradient clipping, EMA, freezing layers
 
@@ -219,8 +215,8 @@ model.load_state_dict(torch_model.state_dict())          # torch tensors or NumP
 model.load_state_dict(state, strict=False)               # returns missing / unexpected keys
 ```
 
-To run a PyTorch model without rewriting it, import it through ONNX instead (`from_torch`, see [onnx.md](onnx.md)).
-That works for inference, not training.
+To run a PyTorch model without rewriting it, import it through ONNX with `from_torch` ([onnx.md](onnx.md)). That
+works for inference only, not training.
 
 ## Export the trained model
 
@@ -234,7 +230,8 @@ from munet.interop import to_onnx
 to_onnx(program, "model.onnx")             # standard ONNX for other runtimes
 ```
 
-Export one program per batch size you serve. See [inference.md](inference.md) for making it fast.
+Export one program per batch size you serve. File format: [onnx.md](onnx.md#save-as-mnet-for-deployment). Making it
+fast: [inference.md](inference.md).
 
 ## Rules of compiled functions
 

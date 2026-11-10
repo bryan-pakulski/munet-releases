@@ -1,8 +1,8 @@
 # Zero copy and video detection
 
-For video, uploading every decoded frame as float32 costs more than running the detector. MuNet can instead keep
-frames on the GPU from the decoder to the detections: only the detections, 32 bytes each, come back to the CPU. These
-are native APIs (C, C++, Rust) and work on any Vulkan GPU.
+Uploading every decoded frame as float32 costs more than running the detector. MuNet can instead keep frames on the
+GPU from the decoder to the detections: only the detections, 32 bytes each, come back to the CPU. These are native
+APIs (C, C++, Rust) and work on any Vulkan GPU.
 
 | Your frames are | Use | Copies |
 |---|---|---|
@@ -33,14 +33,12 @@ the pre/post-processing yourself.
 
 ## 1. Frame pipeline with host frames
 
-Per frame, the pipeline:
+Per frame, the pipeline runs these steps on the GPU:
 
-1. converts NV12 to RGB, resizes and letterboxes each tile, and normalises;
-2. runs the detector over all tiles in batches;
-3. filters by score and maps boxes back to the frame;
-4. runs class-wise NMS.
-
-All of it happens on the GPU.
+1. Convert NV12 to RGB, resize and letterbox each tile, and normalise.
+2. Run the detector over all tiles in batches.
+3. Filter by score and map boxes back to the frame.
+4. Run class-wise NMS.
 
 **Rust:**
 
@@ -75,29 +73,33 @@ munet_frame_detect(pipe, &frame, tiles, n_tiles, NULL /* BT.709 limited */, 0.3f
 munet_frame_pipeline_free(pipe);                     /* before munet_free(program) */
 ```
 
-Complete programs: [rust/examples/detect_frame.rs](../rust/examples/detect_frame.rs) (overlapping tiles for any frame
-size), and the frame-pipeline sections of [c.md](c.md#frame-pipeline-video-detection) and
-[rust/README.md](../rust/README.md#frame-pipeline-video-frames-to-detections).
+API reference: the frame-pipeline sections of
+[c.md](https://github.com/bryan-pakulski/munet-releases/blob/main/docs/c.md#frame-pipeline-video-detection) and
+[rust/README.md](https://github.com/bryan-pakulski/munet-releases/blob/main/rust/README.md#frame-pipeline-video-frames-to-detections).
+[rust/examples/detect_frame.rs](https://github.com/bryan-pakulski/munet-releases/blob/main/rust/examples/detect_frame.rs)
+is a complete program with overlapping tiles for any frame size.
 
 ### Tiles
 
 A tile maps model input pixels to frame pixels: `frame = input_px * scale + offset`. Model pixels outside
-`content_*` are padding.
+`content_*` are black padding.
 
 | Goal | Tile settings |
 |---|---|
-| Whole frame, stretched | `scale = frame_size / model_size`, `offset = 0`, content = whole input |
+| Whole frame, stretched | `scale = frame_size / model_size`, `offset = 0`, content = whole input, `has_region = 0` |
 | Whole frame, letterboxed (keeps aspect) | `scale = max(frame_w / model_w, frame_h / model_h)`, content = the image rectangle inside the input, `offset = -content_origin * scale` |
 | Small objects in a large frame | split into overlapping crops at `scale = 1`, `offset` = crop origin; `has_region = 1`, `region_*` = the area this tile owns (the crop minus half the overlap) |
 
-With regions, a box that touches an interior region edge is dropped, because the neighbouring tile sees that object
-whole. Make the model batch size equal to the usual number of tiles per frame. More tiles than that run in several
-batches.
+- With regions, a box within 2 px of an interior region edge is dropped, because the neighbouring tile sees that
+  object whole.
+- Make the model batch size equal to the usual number of tiles per frame. More tiles than that run in several
+  batches.
 
 ### Colour
 
 - `NULL` / `FrameColor::BT709_LIMITED` is HD video. `BT601_LIMITED` is SD video.
-- For models trained on normalised input, set `mean` and `inv_std` (applied as `(rgb - mean) * inv_std`).
+- The conversion gives RGB in [0, 1]. For models trained on normalised input, set `mean` and `inv_std`, applied as
+  `(rgb - mean) * inv_std`.
 - Match the decoder's colour space and range, or colours (and accuracy) shift.
 
 ## 2. Frames decoded on the GPU
@@ -113,6 +115,13 @@ let program = munet::Program::load_on(&context, "detector-b3.mnet", &options)?;
 let mut pipeline = program.into_frame_pipeline(3840, 2160, 32).map_err(|(e, _)| e)?;
 ```
 
+Sync with the decoder goes through the `sync` argument of detect:
+
+- The pipeline's first submission waits on `wait_semaphore`: the frame is decoded.
+- Its last submission signals `signal_semaphore`: the frame is no longer read.
+- These are exactly the semaphore and value pair an FFmpeg `AVVkFrame` carries.
+- Detect returns once the detections are on the host.
+
 **With FFmpeg** (Vulkan hwaccel):
 
 1. Allocate an `AV_HWDEVICE_TYPE_VULKAN` device context. Fill its `AVVulkanDeviceContext` from the handles: instance,
@@ -126,12 +135,11 @@ let mut pipeline = program.into_frame_pipeline(3840, 2160, 32).map_err(|(e, _)| 
    static void unlock(AVHWDeviceContext* d, uint32_t family, uint32_t index) { munet_vulkan_unlock_queue(g_ctx, family, index); }
    vk->lock_queue = lock; vk->unlock_queue = unlock;
    ```
-   In Rust, call `VulkanContext::lock_queue_raw` / `unlock_queue_raw` from the callbacks. Then call
-   `av_hwdevice_ctx_init`.
-3. Decode as usual. Each output `AVFrame` carries an `AVVkFrame` with `img[0]` (NV12, `G8_B8R8_2PLANE_420`),
+   In Rust, call `VulkanContext::lock_queue_raw` / `unlock_queue_raw` from the callbacks.
+3. Call `av_hwdevice_ctx_init`.
+4. Decode as usual. Each output `AVFrame` carries an `AVVkFrame` with `img[0]` (NV12, `G8_B8R8_2PLANE_420`),
    `layout[0]`, `sem[0]` and `sem_value[0]`.
-4. Call detect with the image, its layout, and the frame's semaphore. The pipeline waits for the decode to finish
-   and signals when it no longer reads the frame:
+5. Call detect with the image, its layout, and the frame's semaphore, then update the frame:
 
    ```rust
    let sync = munet::SemaphoreSync { wait_semaphore: sem, wait_value: value,
@@ -169,9 +177,10 @@ munet_run_device(program, &sync);                              /* returns immedi
 - **Synchronization.** Semaphores must be timeline semaphores on MuNet's device. Hold MuNet's queue lock around
   every submit you make on its queues.
 - **Mixing paths.** `munet_run` (host arrays) and `munet_run_device` can be mixed freely.
-- **Full example.** The validation-clean version is
-  [examples/c/vulkan_interop.cpp](../examples/c/vulkan_interop.cpp); for Rust (`VulkanContext`,
-  `Program::run_device`), see the [Rust guide](../rust/README.md#zero-copy-with-your-own-vulkan-code).
+- **Full example.** The validation-clean C++ version is
+  [examples/c/vulkan_interop.cpp](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/c/vulkan_interop.cpp).
+  For Rust (`VulkanContext`, `Program::run_device`), see the
+  [Rust guide](https://github.com/bryan-pakulski/munet-releases/blob/main/rust/README.md#zero-copy-with-your-own-vulkan-code).
 
 ## Throughput tips
 
