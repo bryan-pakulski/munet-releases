@@ -73,7 +73,7 @@ for i in range(len(mu.devices())):
 - **Matrix cores.** RDNA3 and newer expose cooperative matrices (WMMA) through RADV, used by `"mixed"` / `"fp16"`.
   Older GPUs run the fp32 kernels.
 - **Testing.** AMD runs the same portable kernels as NVIDIA and Intel, but is not yet tested on hardware. Run
-  [examples/bench](../examples/bench/README.md) to check a card, and please report results.
+  `python -m munet.diagnose` and send us the file ([hardware-report.md](hardware-report.md)).
 - **Containers.** `--device /dev/dri` (Vulkan does not need `/dev/kfd`).
 
 ## Mobile and embedded (Arm Mali, Qualcomm Adreno)

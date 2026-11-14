@@ -1,0 +1,44 @@
+name: Hardware report
+description: Share how MuNet runs on your GPU, so we can tune it (slow, wrong results, not detected, or just data).
+title: "[hardware] <GPU model>"
+labels: ["hardware-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping! Run `python -m munet.diagnose` (5-10 minutes per GPU, or `--quick` for 1-2) and attach
+        the `munet-diag-<gpu>.json.gz` file it writes below. See
+        [docs/hardware-report.md](https://github.com/bryan-pakulski/munet-releases/blob/main/docs/hardware-report.md)
+        for what the file contains.
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      placeholder: e.g. AMD Radeon AI PRO R9700, Intel Arc A770, Apple M2 (MoltenVK)
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you seeing?
+      options:
+        - Just sharing data (everything works)
+        - Slower than expected
+        - Wrong or inaccurate results
+        - GPU not detected / Vulkan error
+        - Crash or hang
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Anything else useful - the model you ran, what you compared against, error messages.
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnose file
+      description: Drag `munet-diag-<gpu>.json.gz` here. If GitHub rejects .gz, zip it first.
+      placeholder: Drop the file here
+    validations:
+      required: true

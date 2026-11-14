@@ -151,6 +151,8 @@ TensorRT notes:
 
 ## Not yet tested
 
+Have one of these? Run `python -m munet.diagnose` and send us the file: [hardware-report.md](hardware-report.md).
+
 - **AMD Radeon** (RDNA2/3/4) and AMD Instinct. RDNA3 and newer expose cooperative matrices through Mesa RADV; RDNA2
   and older run fp32 kernels.
 - **Apple Silicon** through MoltenVK (no cooperative matrices expected, so fp32 kernels).

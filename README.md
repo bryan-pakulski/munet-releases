@@ -14,6 +14,23 @@ cooperative-matrix kernels where the GPU has them.
 Linux x86_64 and aarch64 (glibc 2.28+) are built for every release. Running on a GPU needs a Vulkan 1.1 driver and
 `glslangValidator` (`glslang-tools` / `glslang` packages or the Vulkan SDK).
 
+<!-- munet-help:begin -->
+## Help tune MuNet for your GPU
+
+MuNet runs on any Vulkan GPU, but its kernels are tuned only on GPUs we have. If yours is slow, gives wrong results
+or isn't detected, one command collects what we need to fix it:
+
+```bash
+pip install munet-nn
+python -m munet.diagnose                 # 5-10 minutes per GPU; --quick for 1-2
+```
+
+Then [open a hardware report](https://github.com/bryan-pakulski/munet-releases/issues/new?template=hardware-report.yml)
+and attach the `munet-diag-<gpu>.json.gz` file. AMD Radeon, Apple Silicon, Intel integrated / Arc A-series and mobile
+GPUs are especially welcome: we have no numbers for them yet. What the file contains:
+[Hardware report](docs/hardware-report.md).
+<!-- munet-help:end -->
+
 <!-- munet-docs:begin -->
 ## Documentation
 
@@ -29,6 +46,7 @@ Linux x86_64 and aarch64 (glibc 2.28+) are built for every release. Running on a
 | Quantize to int8 / int4 | [Quantization](docs/quantization.md) |
 | Configure NVIDIA, AMD or Intel GPUs, and containers | [GPU vendors](docs/gpus.md) |
 | Check which GPUs have been tested | [Tested hardware](docs/tested-hardware.md) |
+| Report how MuNet runs on my GPU | [Hardware report](docs/hardware-report.md) |
 | Run models from C or C++ | [C and C++](docs/c.md) |
 | Run models from Rust | [Rust](rust/README.md) |
 | Detect objects in video with zero copies | [Zero copy and video](docs/zero-copy.md) |

@@ -10,6 +10,7 @@ on. Some switches react to any value, so unset them rather than setting `0`.
 | `MUNET_LICENSE` | | license key ([getting-started.md](getting-started.md#license-key)) |
 | `MUNET_LICENSE_FILE` | | file holding the key. Without either variable, MuNet reads `~/.config/munet/license.key` (`%APPDATA%\munet\license.key` on Windows) |
 | `MUNET_CACHE_DIR` | `~/.cache/munet-next` | compiled kernels (SPIR-V), driver pipeline caches and autotune results. Copy it to deploy pre-tuned, pre-compiled kernels. A read-only directory disables caching |
+| `MUNET_PIPELINE_CACHE_MAX_MB` | `256` | a driver pipeline cache file larger than this is discarded and rebuilt (each program loads the whole file) |
 | `MUNET_GLSLANG` | `glslangValidator` on `PATH` | shader compiler path |
 | `MUNET_VULKAN_LIBRARY` | system loader | explicit `libvulkan.so` path |
 | `MUNET_VULKAN_DEVICE` | `0` | Python only: which GPU `device="vulkan"` means. `"vulkan:N"` always picks N ([gpus.md](gpus.md#choose-a-gpu)) |
