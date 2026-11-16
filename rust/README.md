@@ -2,11 +2,11 @@
 
 Run neural networks on any Vulkan GPU (AMD, Intel, NVIDIA, Apple through MoltenVK, Android Adreno/Mali) from Rust.
 MuNet compiles a model graph into fused Vulkan compute kernels: fp16 and int8 cooperative-matrix kernels where the
-GPU has them, fp32 everywhere else. It needs no CUDA, ROCm or vendor SDK, only a Vulkan driver.
+GPU has them, portable fp16 or fp32 kernels everywhere else. It needs no CUDA, ROCm or vendor SDK, only a Vulkan driver.
 
 ```toml
 [dependencies]
-munet-nn = "0.8"   # the library is imported as `munet`
+munet-nn = "0.11"   # the library is imported as `munet`
 ```
 
 - [Requirements, build and licensing](#requirements-build-and-licensing)
@@ -14,6 +14,7 @@ munet-nn = "0.8"   # the library is imported as `munet`
 - [Load and run](#load-and-run)
 - [Inputs and outputs](#inputs-and-outputs)
 - [Precision, int8 and autotuning](#precision-int8-and-autotuning)
+- [Device probe](#device-probe)
 - [Frame pipeline: video frames to detections](#frame-pipeline-video-frames-to-detections)
 - [Zero copy with your own Vulkan code](#zero-copy-with-your-own-vulkan-code)
 - [Threads, errors and device loss](#threads-errors-and-device-loss)
@@ -31,6 +32,9 @@ Build:
 - Inside a MuNet engine checkout (or with `MUNET_SOURCE_DIR`), the build script builds the library from source with
   CMake.
 - `MUNET_DOWNLOAD_URL` overrides the download base URL.
+- Android: the crate has no prebuilt library for Android targets and is not tested there. Android apps use the C API
+  archive (`munet-android-<version>.tar.gz`) through JNI:
+  [android.md](https://github.com/bryan-pakulski/munet-releases/blob/main/docs/android.md).
 
 Run:
 
@@ -163,13 +167,35 @@ MuNet computes every tensor as `f32`:
 | `Fp16` | `"fp16"` | fp16 operands and accumulation; fastest on GPUs with fp16-accumulate cooperative matrices; validate accuracy per model |
 | `Fp32` | `"fp32"` | exact float32 (reference) |
 
-- GPUs without cooperative matrices (most mobile GPUs) run the fp32 kernels in every mode.
+- GPUs without cooperative matrices (most mobile GPUs): `Mixed` runs fp32 kernels. `Fp16` runs portable fp16 kernels
+  where shaders have fp16 arithmetic, and fp32 kernels elsewhere.
 - How to choose: [inference.md](https://github.com/bryan-pakulski/munet-releases/blob/main/docs/inference.md#precision).
 - int8 is part of the program. Import with `OnnxOptions::int8` scales (from `munet::calibrate_onnx` or Python's
   `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
 - Autotuning: run the program once from Python on the target GPU with `autotune=True` and the same precision.
   `Program::load` applies the cached results when `Options::autotune_cache` is set (the default). Untuned shapes use
   heuristics.
+
+## Device probe
+
+A few kernel choices depend on the GPU and driver. The probe checks each one against the CPU reference executor on
+the GPU itself, times the correct ones and stores a profile. Later loads use the profile instead of the built-in
+rules.
+
+```rust,no_run
+fn main() -> munet::Result<()> {
+    let profile = munet::probe_device(0)?;            // a few seconds; returns the profile as JSON
+    println!("{profile}");
+    println!("{}", munet::device_profile(0)?);         // the stored profile, `{}` if the GPU was never probed
+    Ok(())
+}
+```
+
+- Run it once per GPU and driver version, for example on first start. The profile is stored in the kernel cache
+  (`MUNET_CACHE_DIR`).
+- A choice that returns wrong results on this GPU is never selected.
+- `MUNET_CONV_DIRECT` and `MUNET_GEMM_VEC_STAGING` override the profile. Unset them before probing.
+- Details: [inference.md](https://github.com/bryan-pakulski/munet-releases/blob/main/docs/inference.md#device-probe).
 
 ## Frame pipeline: video frames to detections
 

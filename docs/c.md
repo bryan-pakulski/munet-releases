@@ -1,6 +1,6 @@
 # MuNet from C and C++
 
-The C API (`munet/munet_c.h`, API version 6, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
+The C API (`munet/munet_c.h`, API version 7, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
 them on any Vulkan GPU, or on the CPU reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig
 and other languages use the same library.
 
@@ -198,6 +198,10 @@ munet_read_output_rows(program, index, rows.data(), rows.size(), &n);   // n sel
 - Device probe: `munet_probe_device(device)` checks the per-GPU kernel choices against the CPU executor, times them
   and stores a device profile in the cache directory; later loads use it. `munet_device_profile_json` returns it
   ([inference.md](inference.md#device-probe)).
+- Hardware report: `munet_device_report_json` returns the device's limits, features, extensions, driver and the kernel
+  rules in force; `munet_device_ceilings_json` measures memory bandwidth and throughput (a few seconds of GPU work).
+  `tests/c_api/diagnose.cpp` combines them with correctness checks and model timings; on a phone, run it with
+  `tools/phone_diagnose.py` ([android.md](android.md#hardware-report-for-your-phone)).
 
 ## Zero copy with Vulkan
 

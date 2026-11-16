@@ -21,6 +21,9 @@ jniLibs/x86_64/libmunet_c.so
 examples/munet_jni.cpp          # JNI bridge
 examples/CMakeLists.txt         # builds the bridge
 examples/MuNet.kt               # Kotlin wrapper
+bin/<abi>/munet_diagnose        # hardware report, run by tools/phone_diagnose.py
+diagnose-models/                # small ONNX models the report runs
+tools/phone_diagnose.py         # one-command hardware report over adb
 docs/                           # the guides this page links to
 third_party/                    # licenses of the libraries linked into libmunet_c.so
 LICENSE, README.md
@@ -82,6 +85,13 @@ MuNet.load(file.path).use { model ->          // off the UI thread
 - **Cache.** `MuNet.init` sets the kernel cache to `context.cacheDir`. Later loads reuse it. Without it, kernels are
   recompiled on every load.
 - **Inputs.** Every input is a `FloatArray` in the model's shape, flattened. Integer inputs take whole numbers as floats.
+- **Symbolic shapes.** An ONNX input with a symbolic dimension needs a static shape:
+  `MuNet.load(path, inputShapes = mapOf("images" to longArrayOf(1, 3, 640, 640)))`.
+- **Import cache.** `MuNet.load(path, cache = File(context.filesDir, "model.mnet").path)` writes the imported ONNX
+  model to that file. Later loads read it while the ONNX file and the options are unchanged.
+- **Names and timing.** `inputName(i)`, `outputName(i)`, `inputShape(i)` and `outputShape(i)` describe the model.
+  `gpuMs()` is the GPU time of the last run. `stats()` returns the device name, load and compile times, and kernel and
+  memory counters as JSON.
 - **Errors.** Failures throw `IllegalStateException` with the library's message, which is also written to logcat under
   the tag `MuNet`.
 
@@ -97,6 +107,42 @@ Phone GPU drivers differ in which kernel forms are correct and which are fast. `
 against its CPU executor on this GPU, times the correct ones and stores the result in the cache directory. Later loads
 use it. Run it once per install and again after a system update, since the profile is stored per driver version.
 See [the device probe](inference.md#device-probe) and [mobile GPUs](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno).
+
+## Hardware report for your phone
+
+`python -m munet.diagnose` has no phone version, so the archive ships a script that does the same over `adb`. It needs
+`adb` and a phone with USB or wireless debugging enabled. Run it from the unpacked archive:
+
+```bash
+python tools/phone_diagnose.py            # about 5 minutes
+python tools/phone_diagnose.py --quick    # about 2 minutes: fp16 only, fewer runs
+python tools/phone_diagnose.py --serial <serial>   # when several phones are connected
+```
+
+The script pushes `libmunet_c.so`, `bin/<abi>/munet_diagnose` and the small models in `diagnose-models/` to
+`/data/local/tmp`, runs them on the GPU, pulls the result, removes everything and writes
+`munet-diag-phone-<model>.json.gz`. Attach that file to a [hardware report](hardware-report.md).
+
+It collects:
+
+- **Phone:** model, SoC, Android version, CPU cores and clocks, RAM, GPU clock limits.
+- **Device:** driver name and build, Vulkan version, features, limits, extensions, subgroup size, float controls,
+  memory heaps, cooperative-matrix shapes and the kernel rules MuNet applies to this GPU.
+- **Ceilings:** measured memory bandwidth and fp32 throughput, plus matrix throughput on GPUs that have it.
+- **Correctness:** matmuls (including K = 4, 8 and 12), convolutions, attention, normalization and softmax at fp32,
+  fp16 and, where available, mixed precision, compared with the CPU executor.
+- **Device probe:** the kernel choices it picks and the profile it stores ([the device probe](#the-device-probe)).
+- **Model profiles:** per-kernel GPU times of a small CNN and a small ViT, with the probe profile in effect.
+- **State:** battery and thermal status before and after the run.
+
+The report holds no serial number, account, network address, license details or file paths. Read it before you share
+it: `zcat munet-diag-phone-*.json.gz | less`.
+
+- Keep the screen on and the phone cool. A throttled GPU skews timings. If the thermal status ends above 1, rerun
+  after the phone cools down.
+- Unlike the desktop report, there is no tile sweep: it applies to cooperative-matrix GPUs, which phones rarely have.
+- In an engine checkout the script builds the binaries with the NDK (`tools/build_android.py`) and the models with
+  `tools/export_diagnose_models.py` (needs torch and onnx) first.
 
 ## License key
 

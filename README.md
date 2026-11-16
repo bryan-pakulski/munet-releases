@@ -29,6 +29,13 @@ Then [open a hardware report](https://github.com/bryan-pakulski/munet-releases/i
 and attach the `munet-diag-<gpu>.json.gz` file. AMD Radeon, Apple Silicon, Intel integrated / Arc A-series and mobile
 GPUs are especially welcome: we have no numbers for them yet. What the file contains:
 [Hardware report](docs/hardware-report.md).
+
+On an Android phone, connect it over `adb` and run one command from the unpacked
+[`munet-android-<version>`](docs/android.md#hardware-report-for-your-phone) archive:
+
+```bash
+python tools/phone_diagnose.py           # about 5 minutes; --quick for 2; writes munet-diag-phone-<model>.json.gz
+```
 <!-- munet-help:end -->
 
 <!-- munet-docs:begin -->

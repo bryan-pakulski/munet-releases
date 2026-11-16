@@ -16,6 +16,11 @@ to a [hardware report issue](https://github.com/bryan-pakulski/munet-releases/is
 
 If MuNet finds no GPU, run it anyway: the report records the Vulkan error.
 
+**Android phone:** `python tools/phone_diagnose.py` from the unpacked
+[`munet-android-<version>`](android.md#hardware-report-for-your-phone) archive, over `adb` (5 minutes, `--quick` 2). It
+records the same sections as below, measured through the C API on the phone, plus the phone's model, SoC, memory and
+thermal state, and writes `munet-diag-phone-<model>.json.gz`. Attach that file the same way. It has no tile sweep.
+
 | Option | Effect |
 |---|---|
 | `--quick` | shorter run, 1-2 minutes per GPU |

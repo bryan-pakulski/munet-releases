@@ -84,14 +84,41 @@ JNIEXPORT jstring JNICALL Java_com_example_munet_MuNet_nativeProbe(JNIEnv* env, 
 }
 
 // Loads model.onnx or model.mnet from a file path (copy APK assets to filesDir first). device -1: CPU executor.
-JNIEXPORT jlong JNICALL Java_com_example_munet_MuNet_nativeLoad(JNIEnv* env, jclass, jstring path, jint device, jboolean fp16) {
-  Chars file(env, path);
+// ONNX only: shapeNames / shapes give static shapes to inputs with symbolic dimensions, and cachePath names a .mnet file
+// that later loads reuse while the ONNX file and the options are unchanged.
+JNIEXPORT jlong JNICALL Java_com_example_munet_MuNet_nativeLoad(JNIEnv* env, jclass, jstring path, jint device, jboolean fp16,
+                                                                jobjectArray shapeNames, jobjectArray shapes, jstring cachePath) {
+  Chars file(env, path), cache(env, cachePath);
   munet_options options = munet_default_options();
   options.device = device;
   options.precision = fp16 ? MUNET_PRECISION_FP16 : MUNET_PRECISION_FP32;
   const std::string name = file.get();
   const bool onnx = name.size() > 5 && name.compare(name.size() - 5, 5, ".onnx") == 0;
-  munet_program* p = onnx ? munet_load_onnx(file.get(), nullptr, &options) : munet_load(file.get(), &options);
+  munet_program* p = nullptr;
+  if (onnx) {
+    const jsize count = shapeNames ? env->GetArrayLength(shapeNames) : 0;
+    std::vector<std::string> names(count);
+    std::vector<std::vector<int64_t>> dims(count);
+    std::vector<munet_onnx_input_shape> entries(count);
+    for (jsize i = 0; i < count; ++i) {
+      auto input = static_cast<jstring>(env->GetObjectArrayElement(shapeNames, i));
+      auto shape = static_cast<jlongArray>(env->GetObjectArrayElement(shapes, i));
+      names[i] = Chars(env, input).get();
+      std::vector<jlong> values(env->GetArrayLength(shape));
+      env->GetLongArrayRegion(shape, 0, static_cast<jsize>(values.size()), values.data());
+      dims[i].assign(values.begin(), values.end());
+      entries[i] = {names[i].c_str(), dims[i].data(), dims[i].size()};
+      env->DeleteLocalRef(input);
+      env->DeleteLocalRef(shape);
+    }
+    munet_onnx_options import = munet_default_onnx_options();
+    import.input_shapes = entries.data();
+    import.input_shape_count = entries.size();
+    if (*cache.get()) import.cache_path = cache.get();
+    p = munet_load_onnx(file.get(), &import, &options);
+  } else {
+    p = munet_load(file.get(), &options);
+  }
   if (!p) fail(env, "load");
   return reinterpret_cast<jlong>(p);
 }
@@ -122,12 +149,37 @@ JNIEXPORT void JNICALL Java_com_example_munet_MuNet_nativeRun(JNIEnv* env, jclas
   if (munet_run(p, pointers.data()) != 0) fail(env, "munet_run");
 }
 
-JNIEXPORT jlongArray JNICALL Java_com_example_munet_MuNet_nativeOutputShape(JNIEnv* env, jclass, jlong handle, jint index) {
-  const auto dims = shape(program(handle), static_cast<size_t>(index), false);
+JNIEXPORT jint JNICALL Java_com_example_munet_MuNet_nativeCount(JNIEnv*, jclass, jlong handle, jboolean input) {
+  return static_cast<jint>(input ? munet_input_count(program(handle)) : munet_output_count(program(handle)));
+}
+
+JNIEXPORT jstring JNICALL Java_com_example_munet_MuNet_nativeName(JNIEnv* env, jclass, jlong handle, jint index, jboolean input) {
+  const size_t i = static_cast<size_t>(index);
+  const char* name = input ? munet_input_name(program(handle), i) : munet_output_name(program(handle), i);
+  return env->NewStringUTF(name ? name : "");
+}
+
+JNIEXPORT jlongArray JNICALL Java_com_example_munet_MuNet_nativeShape(JNIEnv* env, jclass, jlong handle, jint index, jboolean input) {
+  const auto dims = shape(program(handle), static_cast<size_t>(index), input);
   jlongArray result = env->NewLongArray(static_cast<jsize>(dims.size()));
   std::vector<jlong> values(dims.begin(), dims.end());
   env->SetLongArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
   return result;
+}
+
+// GPU time of the last run's compute section in milliseconds; negative when unknown (CPU executor).
+JNIEXPORT jdouble JNICALL Java_com_example_munet_MuNet_nativeGpuMs(JNIEnv*, jclass, jlong handle) { return munet_gpu_ms(program(handle)); }
+
+// Device name, load and compile times, kernel and memory counters as JSON.
+JNIEXPORT jstring JNICALL Java_com_example_munet_MuNet_nativeStats(JNIEnv* env, jclass, jlong handle) {
+  const int32_t length = munet_stats_json(program(handle), nullptr, 0);
+  if (length < 0) {
+    fail(env, "munet_stats_json");
+    return nullptr;
+  }
+  std::string json(static_cast<size_t>(length) + 1, '\0');
+  munet_stats_json(program(handle), json.data(), json.size());
+  return env->NewStringUTF(json.c_str());
 }
 
 // Output `index` of the last run.
