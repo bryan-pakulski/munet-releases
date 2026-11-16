@@ -105,6 +105,7 @@ python examples/bench/hardware_report.py --baseline "RTX 3060" \
 - `export.py NAME OUT`: exports the models with no published ONNX file. `run.py` calls it on first use with
   `$MUNET_BENCH_TORCH_PYTHON` (default: its own interpreter; needs torch and torchvision).
 - Local-only models (`local=` in the manifest, e.g. `local-detr-1280-b3`) are skipped when their file is absent.
+  `MUNET_BENCH_LOCAL_DETR` names the file for those entries.
 - Downloads, exports and ONNX Runtime references are cached in `$MUNET_BENCH_CACHE` (default `~/.cache/munet-bench`).
 
 To check a new GPU, run the suite on it and compare `report.py` matrices. Failures on one vendor only point at

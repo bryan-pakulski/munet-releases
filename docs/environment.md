@@ -82,7 +82,7 @@ Not needed to use MuNet.
 | `MUNET_BENCH_CACHE` | bench suite download cache (default `~/.cache/munet-bench`) |
 | `MUNET_BENCH_TRT_IMAGE` | TensorRT container image for `examples/bench/run.py --trt` (default of `--trt-image`) |
 | `MUNET_BENCH_TORCH_PYTHON` | Python with torch and torchvision for the bench's local model exports (default: the bench's own) |
-| `MUNET_BENCH_LOCAL_DETR` | path of the local 1280 px detector ONNX for the bench's batched detector entries |
+| `MUNET_BENCH_LOCAL_DETR` | path of a local RT-DETR-style ONNX export (1280 px) for the bench's `local-detr-1280` entries (default `~/.cache/munet-bench/local/detr-1280.onnx`) |
 | `MUNET_TEST_SWARM`, `MUNET_SWARM_NODE`, `MUNET_SWARM_NODE_WRAPPER` | swarm integration tests |
 
 Kernel-tuning overrides used during development (`MUNET_MM_CFG`, `MUNET_CONV_CFG`, `MUNET_FLASH_TILE`, `MUNET_ACC16`,
