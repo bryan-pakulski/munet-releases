@@ -48,6 +48,7 @@ GPUs are especially welcome: we have no numbers for them yet. What the file cont
 | Check which GPUs have been tested | [Tested hardware](docs/tested-hardware.md) |
 | Report how MuNet runs on my GPU | [Hardware report](docs/hardware-report.md) |
 | Run models from C or C++ | [C and C++](docs/c.md) |
+| Add MuNet to an Android app | [Android](docs/android.md) |
 | Run models from Rust | [Rust](rust/README.md) |
 | Detect objects in video with zero copies | [Zero copy and video](docs/zero-copy.md) |
 | Look up an environment variable | [Environment variables](docs/environment.md) |

@@ -33,7 +33,7 @@ for i in range(len(mu.devices())):
 
 | Field | Meaning |
 |---|---|
-| `cooperative_matrix` | False: `"mixed"` and `"fp16"` run fp32 kernels (correct, slower). Update the driver; older GPUs don't have matrix cores |
+| `cooperative_matrix` | False: `"mixed"` runs fp32 kernels (correct, slower); `"fp16"` runs portable fp16 kernels if shaders have fp16 arithmetic, else fp32. Update the driver; older and mobile GPUs don't have matrix cores |
 | `fp16_accumulate` | False: `"fp16"` runs like `"mixed"` |
 | `int8` | False: int8 programs compute their quantized layers in fp16 |
 | `driver_warning` | non-empty: the driver hides the tensor cores (e.g. NVIDIA 535) and an update would enable them. Printed once to stderr; `MUNET_NO_DRIVER_WARNING=1` silences it |
@@ -78,9 +78,21 @@ for i in range(len(mu.devices())):
 
 ## Mobile and embedded (Arm Mali, Qualcomm Adreno)
 
-These run the fp32 kernels unless the driver exposes cooperative matrices.
+Without cooperative matrices these run fp32 kernels, or portable fp16 kernels with `precision="fp16"` where shaders
+have fp16 arithmetic.
 
-Some mobile drivers reset the GPU on long submissions. `MUNET_SUBMIT_KERNELS=64` splits each run into smaller ones.
+Two kernel choices depend on the GPU. Built-in rules pick them from the vendor and model:
+
+| Choice | Rule | Override |
+|---|---|---|
+| Direct fp16 convolution, widest layer it takes | Adreno 7xx: any width; Adreno 6xx: 64 output channels; others: 32 | `MUNET_CONV_DIRECT=N` (`0`: off) |
+| GEMM operand staging in shared memory | Qualcomm: whole vec4s; others: single elements | `MUNET_GEMM_VEC_STAGING=0/1` |
+
+Single-element staging returns wrong results on Adreno 730 (driver 0615.0). For a GPU the rules were not written
+for, run the device probe once: [inference.md](inference.md#device-probe).
+
+Some mobile drivers reset the GPU on long submissions. Android builds split each run into submissions of 16 kernels;
+`MUNET_SUBMIT_KERNELS=N` changes the size on any platform (`0`: never split).
 
 ## Several vendors in one machine
 

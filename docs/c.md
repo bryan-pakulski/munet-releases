@@ -1,6 +1,6 @@
 # MuNet from C and C++
 
-The C API (`munet/munet_c.h`, API version 5, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
+The C API (`munet/munet_c.h`, API version 6, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
 them on any Vulkan GPU, or on the CPU reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig
 and other languages use the same library.
 
@@ -47,10 +47,11 @@ To build from source in the engine checkout, configure with `cmake -DMUNET_C_API
 At run time you need:
 
 - a Vulkan 1.1+ loader and driver (any vendor: AMD, NVIDIA, Intel, Arm Mali, Qualcomm Adreno, Apple through MoltenVK);
-- `glslangValidator` on `PATH` (`glslang-tools` on Debian/Ubuntu), or its path in `MUNET_GLSLANG`.
+- `glslangValidator` on `PATH` (`glslang-tools` on Debian/Ubuntu), or its path in `MUNET_GLSLANG`. Builds with
+  `-DMUNET_SHADERC=ON` compile kernels in-process with shaderc instead and need no external tool (Android always does).
 
-Kernels are compiled when a program loads and cached in `~/.cache/munet-next` (`MUNET_CACHE_DIR`), so later loads
-skip compilation. All environment variables: [environment.md](environment.md).
+Kernels are compiled when a program loads and cached in `~/.cache/munet-next` (`MUNET_CACHE_DIR`, or
+`munet_set_cache_dir(path)`), so later loads skip compilation. Without any cache directory nothing is cached. All environment variables: [environment.md](environment.md).
 
 Without a license key the library runs in evaluation mode and prints a notice. `munet_license_json()` reports the
 status ([key setup](getting-started.md#license-key)):
@@ -185,7 +186,8 @@ munet_read_output_rows(program, index, rows.data(), rows.size(), &n);   // n sel
 | `MUNET_PRECISION_FP16` | `"fp16"` | fp16 operands and accumulation; fastest on GPUs with fp16-accumulate cooperative matrices; validate accuracy per model |
 | `MUNET_PRECISION_FP32` | `"fp32"` | exact float32 (reference) |
 
-- GPUs without cooperative matrices (most mobile GPUs) run fp32 kernels in every mode.
+- GPUs without cooperative matrices (most mobile GPUs) run fp32 kernels, except `MUNET_PRECISION_FP16`: it runs
+  portable fp16 matmul/convolution kernels where shaders have fp16 arithmetic (`half_gemm_kernels` in the stats).
 - How to choose and measure: [inference.md](inference.md#precision). GPU-specific notes: [gpus.md](gpus.md).
 - int8 is part of the program, not an option. Import with `int8_scales` (from `munet_calibrate_onnx` or Python's
   `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
@@ -193,6 +195,9 @@ munet_read_output_rows(program, index, rows.data(), rows.size(), &n);   // n sel
 - Autotuning: run the program once from Python with `autotune=True` and the same precision on the target GPU
   ([inference.md](inference.md#autotuning)). C loads apply the cached results when `use_autotune_cache` is set (the
   default). Untuned shapes use heuristics.
+- Device probe: `munet_probe_device(device)` checks the per-GPU kernel choices against the CPU executor, times them
+  and stores a device profile in the cache directory; later loads use it. `munet_device_profile_json` returns it
+  ([inference.md](inference.md#device-probe)).
 
 ## Zero copy with Vulkan
 
@@ -286,8 +291,9 @@ munet_frame_pipeline_free(pipe);             /* before freeing the program */
   unknown.
 - `munet_stats_json(program, buf, size)`: the device name, load / shader compile / device setup times, the number of
   autotuned kernels, kernel and memory counters, run counts and the last `gpu_ms`, as JSON.
-- `options.profile = 1` records a GPU timestamp per kernel. It serializes kernels, so use it to compare kernels,
-  not to measure throughput.
+- `options.profile = 1` records a GPU timestamp per kernel; `munet_stats_json` then adds `kernel_profile` (path, ms,
+  flops, elements and name of each kernel of the last run). It serializes kernels, so use it to compare kernels, not
+  to measure throughput.
 - `MUNET_PIPELINE_STATS=1` prints the driver's statistics for each kernel (registers, spills, ...) to stderr when the
   program loads, on drivers that expose `VK_KHR_pipeline_executable_properties`.
 - Vulkan validation layers (`VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`) are supported and expected to be clean.
@@ -310,3 +316,8 @@ target_link_libraries(app PRIVATE MuNet::core)   # then #include <munet/core.hpp
 
 It is a C++ ABI package: you need C++17 and a toolchain compatible with the release build. If yours differs, use the
 C API or build from source.
+
+## Android
+
+Releases publish `munet-android-<version>.tar.gz`: `libmunet_c.so` for `arm64-v8a` and `x86_64`, a JNI bridge and a
+Kotlin wrapper. [android.md](android.md) shows how to add it to an Android Studio project.

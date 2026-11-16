@@ -40,7 +40,8 @@ Compiled kernels (SPIR-V), driver pipeline caches and autotune results live in `
 | `"fp16"` | fp16 inputs and accumulation | up to 2x `"mixed"` on GPUs with fast fp16 accumulation (NVIDIA GeForce RTX 30/40), same as `"mixed"` elsewhere | validate per model |
 
 - Everything outside matmuls and convolutions (activations, normalization, softmax) computes in fp32 in every mode.
-- On GPUs without cooperative-matrix support, every mode runs fp32 kernels.
+- On GPUs without cooperative-matrix support, `"mixed"` runs fp32 kernels. `"fp16"` runs portable fp16 kernels where
+  shaders have fp16 arithmetic (Adreno 650: 1.1-1.5x faster than `"fp32"`), and fp32 kernels elsewhere.
 
 Start with `"fp16"` for inference. If outputs differ too much from `"fp32"`, use `"mixed"`.
 [examples/python/infer_onnx.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/infer_onnx.py) `--compare` checks against ONNX Runtime.
@@ -61,6 +62,30 @@ model(example)                          # tunes during this call (default budget
   the cache directory along with the `.mnet`, or run the tuning step on the target machine.
 - **Budget.** `MUNET_AUTOTUNE_BUDGET_S=120` raises the per-program time limit. `MUNET_AUTOTUNE=1` turns tuning on
   for every compile.
+
+## Device probe
+
+A few kernel choices depend on the GPU and driver ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)).
+The probe measures them on the GPU itself instead of relying on the built-in rules.
+
+```python
+import munet as mu
+profile = mu.probe_device()      # a few seconds; C: munet_probe_device(0), Rust: munet::probe_device(0)
+print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile["notes"])
+```
+
+- **Correctness first.** Each choice runs small convolutions and matmuls and is compared with the CPU reference
+  executor. A choice that returns wrong results on this GPU is never selected.
+- **Then speed.** The correct choices are timed against each other on the GPU.
+- **Stored per GPU and driver.** The result is saved as `device-<vendor>-<device>-<driver>-probe-v1.json` in the
+  kernel cache. Later compiles and loads use it instead of the built-in rules. A driver update gets a new profile.
+- **Overrides win.** `MUNET_CONV_DIRECT` and `MUNET_GEMM_VEC_STAGING` take precedence over the profile; unset them
+  before probing.
+- **Run it once per device**, for example on first start. It is separate from autotuning, which picks tile sizes on
+  GPUs with cooperative matrices.
+
+`mu.device_profile()` returns the stored profile (`{}` if the GPU was never probed). `complete` is false and `notes`
+says why when a check failed or the device was lost; restart the process in that case.
 
 ## Batching
 

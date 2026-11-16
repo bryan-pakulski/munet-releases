@@ -22,6 +22,8 @@ on. Some switches react to any value, so unset them rather than setting `0`.
 |---|---|---|
 | `MUNET_AUTOTUNE=1` | off | autotune every compile ([inference.md](inference.md#autotuning)) |
 | `MUNET_AUTOTUNE_BUDGET_S` | `30` | seconds of tuning per program |
+| `MUNET_CONV_DIRECT=N` | device rule or profile | `"fp16"` without cooperative matrices: widest convolution (output channels) that runs the direct kernel; `0` uses the GEMM kernel everywhere ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)) |
+| `MUNET_GEMM_VEC_STAGING=0/1` | device rule or profile | portable GEMM kernels stage operands as single elements (`0`) or whole vec4s (`1`) |
 | `MUNET_MERGE_SIBLINGS=1` | off | ONNX import: merge sibling layers that read the same input. No bench model gains from it. Part of the native-import cache key |
 | `MUNET_COOP2_CONV=1` | off | NVIDIA `VK_NV_cooperative_matrix2` convolution kernel (experimental, not faster) |
 
@@ -31,14 +33,14 @@ Switches to isolate a wrong result or a GPU crash.
 
 | Variable | Effect |
 |---|---|
-| `MUNET_DISABLE_COOPMAT=1` | portable fp32 kernels only (no tensor / matrix cores) |
+| `MUNET_DISABLE_COOPMAT=1` | portable kernels only (no tensor / matrix cores): fp32, or fp16 shader arithmetic for `"fp16"` |
 | `MUNET_DISABLE_COOP2=1` | ignore `VK_NV_cooperative_matrix2` |
 | `MUNET_NO_INT8=1` | quantized layers run in fp16 |
 | `MUNET_NO_FLASH=1` | attention as separate kernels instead of the fused flash kernel |
 | `MUNET_NO_FLASH_BWD=1` | training: attention backward without the fused kernels |
 | `MUNET_NO_TILED_POINTWISE=1` | permuted element-wise kernels without shared-memory tiling |
 | `MUNET_CHANNELS_LAST=0`, `MUNET_CONCAT_ALIAS=0`, `MUNET_FUSE_Q8=0` | turn off individual layout / fusion passes |
-| `MUNET_SUBMIT_KERNELS=N` | split each run into submissions of at most N kernels (drivers that reset on long submissions). Default: one submission |
+| `MUNET_SUBMIT_KERNELS=N` | split each run into submissions of at most N kernels (drivers that reset on long submissions). Default: 16 on Android, one submission elsewhere; `0` never splits |
 | `MUNET_SUBMIT_SYNC=1` | wait after every submission; on failure, report the kernel range (find a kernel that resets the GPU) |
 | `MUNET_PIPELINE_STATS=1` | print driver statistics (registers, spills) per kernel at load |
 | `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` | Vulkan validation layers |
