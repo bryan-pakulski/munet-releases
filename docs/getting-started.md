@@ -55,7 +55,7 @@ C, C++ and Rust: see [c.md](c.md) and [rust/README.md](../rust/README.md).
 ```bash
 python - <<'EOF'
 import numpy as np, munet as mu
-print(mu.devices())                                    # ['NVIDIA GeForce RTX 3060', ...]
+print(mu.devices())                                    # ['<GPU name>', ...]
 f = mu.compile(lambda x: (x @ x.T).relu())             # device="vulkan" (GPU 0) by default
 print(f(np.random.rand(256, 256).astype(np.float32)).numpy().shape, f.stats()["device"])
 EOF

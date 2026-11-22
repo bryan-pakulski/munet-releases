@@ -32,13 +32,14 @@ Or use the standalone archives, which need no Python install (the server bundles
 
 1. Download the matching `munet-node`, `munet-server` and `munet-sdk` archives and `SHA256SUMS-linux-ARCH` from
    [munet-releases](https://github.com/bryan-pakulski/munet-releases/releases).
-2. Verify them: `sha256sum --check SHA256SUMS-linux-ARCH`. The check expects all three archives.
+2. Verify them: `sha256sum --check --ignore-missing SHA256SUMS-linux-ARCH`. The file also lists the
+   `munet-pool-node` archive; `--ignore-missing` skips archives you did not download.
 3. Extract them into a directory you own. Keep the directory structure: the node uses relative library paths and
    the server needs its `_internal` directory.
 4. Add each extracted `bin` directory to `PATH`.
 
 ```bash
-sha256sum --check SHA256SUMS-linux-x86_64
+sha256sum --check --ignore-missing SHA256SUMS-linux-x86_64
 tar -xzf munet-node-VERSION-linux-x86_64.tar.gz
 tar -xzf munet-server-VERSION-linux-x86_64.tar.gz
 munet-node-VERSION-linux-x86_64/bin/munet-node --version

@@ -22,10 +22,11 @@ examples/munet_jni.cpp          # JNI bridge
 examples/CMakeLists.txt         # builds the bridge
 examples/MuNet.kt               # Kotlin wrapper
 bin/<abi>/munet_diagnose        # hardware report, run by tools/phone_diagnose.py
+bin/<abi>/munet-pool-node       # training-pool node, run from a shell
 diagnose-models/                # small ONNX models the report runs
 tools/phone_diagnose.py         # one-command hardware report over adb
 docs/                           # the guides this page links to
-third_party/                    # licenses of the libraries linked into libmunet_c.so
+third_party/                    # licenses of the libraries linked into libmunet_c.so and the binaries
 LICENSE, README.md
 ```
 

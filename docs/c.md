@@ -1,6 +1,6 @@
 # MuNet from C and C++
 
-The C API (`munet/munet_c.h`, API version 7, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
+The C API (`munet/munet_c.h`, API version 9, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
 them on any Vulkan GPU, or on the CPU reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig
 and other languages use the same library.
 
@@ -177,6 +177,27 @@ MuNet computes every tensor as float32, so all data crosses the API as `float`:
 std::vector<float> rows(bound * 3); size_t n = 0;
 munet_read_output_rows(program, index, rows.data(), rows.size(), &n);   // n selected rows, rows[3*r .. 3*r+2]
 ```
+
+## Program state and memory limit
+
+A program with parameters, such as the gradient program a [training pool](pool.md) master hands out, can have its
+state set and read, and can be loaded under a memory limit.
+
+```c
+uint64_t needs = 0;
+munet_program* program = munet_load_limited(path, &options, 2ull << 30, &needs);   // limit in bytes, 0 = none
+if (!program && needs) { /* over the limit: the program needs `needs` bytes */ }
+
+uint64_t setup, steady;
+munet_buffer_bytes(program, &setup, &steady);        // peak while loading, held afterwards
+munet_write_state(program, id, values, count);       // set a parameter
+munet_read_state(program, id, values, count);        // read a parameter, buffer or output
+```
+
+- `id` is a node id of the graph `munet.save` wrote. A pool master lists the ids in its manifest.
+- `count` must equal the value's element count.
+- The limit is checked before kernels are compiled or anything is allocated.
+- The limit counts the buffers MuNet allocates. Memory the GPU driver maps on top is not counted.
 
 ## Precision, int8 and autotuning
 

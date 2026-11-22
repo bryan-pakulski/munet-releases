@@ -13,6 +13,7 @@ munet-nn = "0.11"   # the library is imported as `munet`
 - [Models](#models)
 - [Load and run](#load-and-run)
 - [Inputs and outputs](#inputs-and-outputs)
+- [Program state and memory limit](#program-state-and-memory-limit)
 - [Precision, int8 and autotuning](#precision-int8-and-autotuning)
 - [Device probe](#device-probe)
 - [Frame pipeline: video frames to detections](#frame-pipeline-video-frames-to-detections)
@@ -158,6 +159,35 @@ MuNet computes every tensor as `f32`:
   up to 2^24). Round them to get the integers back.
 - NMS outputs: `TensorInfo::padded` marks `NonMaxSuppression` outputs: `[bound, 3]` rows, where the unused rows
   are `-1`. `read_rows` / `read_i64` return the selected rows only, as Python does.
+
+## Program state and memory limit
+
+A program with parameters, such as the gradient program a training-pool master hands out, can have its state set and
+read, and can be loaded under a memory limit.
+
+```rust,no_run
+use munet::{Options, Program};
+
+fn main() -> munet::Result<()> {
+    let options = Options::default();
+    // Limit in bytes, 0 = none. Over the limit nothing is allocated.
+    let mut program = match Program::load_limited("gradients.mnet", &options, 2 << 30)? {
+        Ok(program) => program,
+        Err(over) => return Err(munet::Error(format!("needs {} bytes", over.needs))),
+    };
+    let bytes = program.buffer_bytes()?;                 // peak while loading, held afterwards
+    println!("setup {} steady {}", bytes.setup, bytes.steady);
+
+    let mut weights = vec![0f32; 12];
+    program.read_state(1, &mut weights)?;                // a parameter, buffer or output, by graph node id
+    program.write_state(1, &weights)?;                   // set a parameter
+    Ok(())
+}
+```
+
+- The id is a node id of the graph `munet.save` wrote. A pool master lists the ids in its manifest.
+- The slice length must equal the value's element count.
+- The limit counts the buffers MuNet allocates. Memory the GPU driver maps on top is not counted.
 
 ## Precision, int8 and autotuning
 

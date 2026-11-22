@@ -187,6 +187,22 @@ Set it with `mu.compile(..., precision=...)`. Full table: [inference.md](inferen
 
 No loss-scaling code is needed. GPUs without cooperative matrices run fp32 in every mode. `"fp16"` is for inference.
 
+### Half-float activations
+
+`mu.compile(..., precision="fp32", activations="fp16")` stores the forward activations of a program as half floats. Use
+it when a training program does not fit in GPU memory.
+
+- It is off by default. It needs `precision="fp32"` and a Vulkan device.
+- Arithmetic stays float32. Gradients, indices, sampling positions, updated state and outputs are stored as float32.
+- Stored activations round to 11 bits and saturate at 65504, so losses and gradients differ from float32 ones.
+- It saves memory where forward activations make the program's peak, and little where gradients do.
+- `mu.load(path, activations="fp16")` needs a file that records which values are gradients. Files saved before this
+  option existed do not; save the program again.
+
+Gradients and losses differ from float32 ones. The difference is largest in layers that predict sampling offsets, and
+a model that keeps its best-scoring queries can keep different ones after rounding. Check the loss curve of your own
+model before relying on it.
+
 ## Gradient clipping, EMA, freezing layers
 
 ```python

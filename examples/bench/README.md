@@ -81,16 +81,15 @@ detected by PCI vendor ID.
 
 ## Hardware report
 
-`hardware_report.py` turns runs from several GPUs into the speed tables of
-[docs/tested-hardware.md](../../docs/tested-hardware.md):
+`hardware_report.py` turns runs from several GPUs into speed tables:
 
 - MuNet milliseconds per model;
 - speed relative to a baseline GPU;
 - MuNet against TensorRT on the same GPU.
 
 ```bash
-python examples/bench/hardware_report.py --baseline "RTX 3060" \
-    "RTX 3060=examples/bench/results/nvidia-geforce-rtx-3060" "L4=path/to/l4/results"
+python examples/bench/hardware_report.py --baseline "GPU A" \
+    "GPU A=path/to/a/results" "GPU B=path/to/b/results"
 ```
 
 ## Files

@@ -58,9 +58,9 @@ Runnable example: [examples/python/train_multi_gpu.py](../examples/python/train_
 |---|---|
 | `[None, None, 48]` | GPU 2 never gets more than 48 rows per step; its excess goes to the other GPUs in proportion to their weights |
 
-### Example: RTX 3090 (24 GB) + RTX 3060 (12 GB) + RTX 4060 (8 GB)
+### Example: three cards with 24, 12 and 8 GB
 
-The 3090 is roughly twice as fast as the other two cards. The 4060 has a third of the 3090's memory. Use one of
+The first card is roughly twice as fast as the other two. The third has a third of the first one's memory. Use one of
 these setups.
 
 **Simplest: split by memory.** Each card gets rows in proportion to its memory:
@@ -74,7 +74,7 @@ dp = mu.DataParallel(loss_fn, model.parameters(), optimizer, devices,
 `dp.counts` shows the rows each GPU got in the last step. Weights, gradients and optimizer state take the same memory
 on every card, so the smallest card fills up first. If it runs out, add a cap for it (next setup).
 
-**Fastest: split by speed, cap by memory.** `"auto"` gives the 3090 about half of every batch. The caps keep the
+**Fastest: split by speed, cap by memory.** `"auto"` gives the fastest card about half of every batch. The caps keep the
 smaller cards inside their memory whatever the speed measurement says:
 
 ```python

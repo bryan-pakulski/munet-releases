@@ -7,11 +7,11 @@ that explains it.
 
 | Name | What it does |
 |---|---|
-| `compile(fn=None, *, device="vulkan", precision="mixed", fuse=True, profile=False, autotune=None, recover=None)` | trace `fn` (a function or a module) into a GPU program; usable as `@mu.compile` or `@mu.compile(device=...)` ([training.md](training.md)). `recover="rebuild"` recompiles and retries once after a GPU reset ([troubleshooting.md](troubleshooting.md#gpu-crashes-and-memory)) |
+| `compile(fn=None, *, device="vulkan", precision="mixed", fuse=True, profile=False, autotune=None, recover=None, activations="fp32")` | trace `fn` (a function or a module) into a GPU program; usable as `@mu.compile` or `@mu.compile(device=...)` ([training.md](training.md)). `recover="rebuild"` recompiles and retries once after a GPU reset ([troubleshooting.md](troubleshooting.md#gpu-crashes-and-memory)). `activations="fp16"` stores forward activations as half floats ([training.md](training.md#half-float-activations)) |
 | `devices()` | names of the Vulkan GPUs; `"vulkan:N"` is the N-th ([gpus.md](gpus.md#choose-a-gpu)) |
 | `device_info(index=None)` | memory, vendor, matrix-core support of a GPU; default index `MUNET_VULKAN_DEVICE` or 0 ([gpus.md](gpus.md#see-what-munet-detected)) |
 | `probe_device(index=None)` / `device_profile(index=None)` | verify and time the per-GPU kernel choices and store a device profile / read it ([inference.md](inference.md#device-probe)) |
-| `save(program, path)` / `load(path, *, device="vulkan", precision="mixed", fuse=True)` | `.mnet` files for Python, C, C++, Rust ([onnx.md](onnx.md#save-as-mnet-for-deployment)) |
+| `save(program, path)` / `load(path, *, device="vulkan", precision="mixed", fuse=True, activations="fp32")` | `.mnet` files for Python, C, C++, Rust ([onnx.md](onnx.md#save-as-mnet-for-deployment)) |
 | `DataParallel(loss_fn, parameters, optimizer, devices, *, precision="fp32", fuse=True, split="even", max_rows=None)` | multi-GPU training: `.step(*batch)`, `.counts`, `.stats()`. Note the `"fp32"` default ([multi-gpu.md](multi-gpu.md)) |
 | `quantize(model, calib_data=None, *, scheme="w8a8_dynamic", observer="minmax", group_size=128, device="cpu")` | quantize `Linear` layers in place ([quantization.md](quantization.md)) |
 | `Tensor`, `Parameter`, `Buffer` | traced values, trainable weights, non-trained state |

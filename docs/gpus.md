@@ -24,7 +24,7 @@ From C, set `options.device = N` (`-1` for the CPU). From Rust, use `Device::Vul
 import munet as mu
 for i in range(len(mu.devices())):
     print(mu.device_info(i))
-# {'index': 0, 'name': 'NVIDIA GeForce RTX 3060', 'vendor': 'NVIDIA', 'memory_bytes': 12884901888,
+# {'index': 0, 'name': '<GPU name>', 'vendor': 'NVIDIA', 'memory_bytes': 12884901888,
 #  'api_version': '1.4.351', 'cooperative_matrix': True, 'fp16_accumulate': True, 'int8': True,
 #  'coopmat2': True, 'subgroup_rows': 16, 'fp16_denormals': True, 'driver_warning': ''}
 ```
@@ -43,8 +43,8 @@ for i in range(len(mu.devices())):
 - **Driver.** The proprietary driver includes Vulkan. Cooperative matrices need a driver that exposes
   `VK_KHR_cooperative_matrix`; check `cooperative_matrix`. The 535 branch (common on cloud images) exposes only
   `VK_NV_cooperative_matrix`, so MuNet runs fp32 kernels there and says so in `driver_warning`. The 595 branch works on
-  Turing through Blackwell. See [tested-hardware.md](tested-hardware.md).
-- **Precision.** GeForce RTX 30/40 run `"fp16"` about twice as fast as `"mixed"` on matmuls and convolutions.
+  Turing through Blackwell.
+- **Precision.** GPUs with fast fp16 accumulation run `"fp16"` faster than `"mixed"` on matmuls and convolutions.
 - **`VK_NV_cooperative_matrix2`.** It is detected (`coopmat2`) and used by an opt-in convolution kernel,
   `MUNET_COOP2_CONV=1`. That kernel is correct but not faster, so leave it off. `MUNET_DISABLE_COOP2=1` hides the
   extension entirely.
@@ -57,7 +57,7 @@ for i in range(len(mu.devices())):
 
 ## Intel (Arc, Xe)
 
-- **Driver.** Mesa ANV. Arc B-series (B580/B570) needs Mesa 25.x or newer and the `xe` kernel driver. Newer Mesa is
+- **Driver.** Mesa ANV. Arc B-series needs Mesa 25.x or newer and the `xe` kernel driver. Newer Mesa is
   noticeably faster.
 - **Handled automatically.** 8x16 matrix fragments on 16-wide subgroups, Intel tile sizes, and preserved fp16
   denormals (ANV flushes them by default, which would break training).
@@ -88,7 +88,7 @@ Two kernel choices depend on the GPU. Built-in rules pick them from the vendor a
 | Direct fp16 convolution, widest layer it takes | Adreno 7xx: any width; Adreno 6xx: 64 output channels; others: 32 | `MUNET_CONV_DIRECT=N` (`0`: off) |
 | GEMM operand staging in shared memory | Qualcomm: whole vec4s; others: single elements | `MUNET_GEMM_VEC_STAGING=0/1` |
 
-Single-element staging returns wrong results on Adreno 730 (driver 0615.0). For a GPU the rules were not written
+Single-element staging returns wrong results on some Qualcomm drivers. For a GPU the rules were not written
 for, run the device probe once: [inference.md](inference.md#device-probe).
 
 Some mobile drivers reset the GPU on long submissions. Android builds split each run into submissions of 16 kernels;
@@ -103,4 +103,3 @@ share one `DataParallel` run ([multi-gpu.md](multi-gpu.md)).
 
 - Debugging switches (`MUNET_DISABLE_COOPMAT`, `MUNET_SUBMIT_SYNC`, validation layers, ...):
   [environment.md](environment.md#debugging).
-- Validated GPUs, known issues and speed: [tested-hardware.md](tested-hardware.md).

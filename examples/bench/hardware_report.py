@@ -1,7 +1,7 @@
-"""Markdown speed tables for docs/tested-hardware.md from bench results (examples/bench/run.py, optionally --trt).
+"""Markdown speed tables from bench results (examples/bench/run.py, optionally --trt).
 
-    python examples/bench/hardware_report.py --baseline "RTX 3060" \\
-        "RTX 3060=examples/bench/results/nvidia-geforce-rtx-3060" "T4=results/aws/g4dn.xlarge/bench" ...
+    python examples/bench/hardware_report.py --baseline "GPU A" \\
+        "GPU A=path/to/a/results" "GPU B=path/to/b/results" ...
 
 Each argument is LABEL=PATH, where PATH is a result JSON or a directory (its newest JSON, searched recursively). Prints:
 1. MuNet GPU time per model and GPU (ms, batch 1), with the geometric mean;

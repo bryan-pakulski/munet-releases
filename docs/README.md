@@ -8,12 +8,12 @@
 | Train a model (loop, losses, optimizers, schedules, checkpoints, precision) | [training.md](training.md) |
 | Load training data (datasets, augmentation, workers, prefetch, sharding) | [data.md](data.md) |
 | Train on several GPUs, including different sizes and vendors | [multi-gpu.md](multi-gpu.md) |
+| Train across machines with nodes that join and leave | [pool.md](pool.md) |
 | Train across machines (owner and worker nodes) | [swarm.md](swarm.md) |
 | Import / export ONNX, import PyTorch | [onnx.md](onnx.md) |
 | Make inference fast (precision, autotuning, batching, measuring) | [inference.md](inference.md) |
 | Quantize (int8 convolutions, int8 / int4 linear layers, pre-quantized ONNX) | [quantization.md](quantization.md) |
 | Configure NVIDIA, Intel, AMD, mobile GPUs and containers | [gpus.md](gpus.md) |
-| See which GPUs are validated, and how fast they are | [tested-hardware.md](tested-hardware.md) |
 | Report how MuNet runs on my GPU (`munet.diagnose`) | [hardware-report.md](hardware-report.md) |
 | Deploy from C or C++ | [c.md](c.md) |
 | Add MuNet to an Android app | [android.md](android.md) |

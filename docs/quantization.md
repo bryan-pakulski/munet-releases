@@ -36,13 +36,7 @@ engine's C++ importer, the same code as C's `munet_calibrate_onnx` and Rust's `m
 - **Partial selection.** Pass a subset of `scales` to quantize only some layers. Sensitive layers are often the
   first convolution and a few encoder layers.
 
-Measured on an RT-DETR-style detector at 1280x1280:
-
-| int8 convolutions | Time | mAP50 |
-|---|---|---|
-| none (fp16) | 23.7 ms | 83.38 |
-| 25 of 32 eligible | 21.1 ms | 83.29 |
-| all 32 | 19.8 ms | 82.36 |
+Each layer you quantize saves time and costs some accuracy. Measure both on your model.
 
 Runnable: [examples/python/quantize_int8.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/quantize_int8.py) (calibrate, compare with fp16, time,
 save).
@@ -96,15 +90,14 @@ program = mu.compile(model)
 Signature: `mu.quantize(model, calib_data=None, *, scheme="w8a8_dynamic", observer="minmax", group_size=128,
 device="cpu")`. Note the default observer here is `"minmax"`, not `"mse"`.
 
-| Scheme | Weights | Activations | Best for | Measured |
-|---|---|---|---|---|
-| `w8a8_dynamic` | int8 per channel | int8 per row, computed at run time | large batches (prefill, big MLPs) | ~2x fp16 on large GEMMs |
-| `w8a8` | int8 per channel | int8 per tensor, calibrated (pass `calib_data`) | same, slightly cheaper | |
-| `w8` | int8 per channel | fp16 | batch 1-8 (decode): memory-bound | 2.3x fp16 at batch 1, half the memory |
-| `w4` | int4, groups of 128 | fp16 | batch 1-8, memory-limited | 4x fp16 at batch 1, quarter the memory |
+| Scheme | Weights | Activations | Best for |
+|---|---|---|---|
+| `w8a8_dynamic` | int8 per channel | int8 per row, computed at run time | large batches (prefill, big MLPs) |
+| `w8a8` | int8 per channel | int8 per tensor, calibrated (pass `calib_data`) | same, slightly cheaper |
+| `w8` | int8 per channel | fp16 | batch 1-8 (decode): memory-bound |
+| `w4` | int4, groups of 128 | fp16 | batch 1-8, memory-limited |
 
-The measurements are from an RTX 3060. Above 8 rows the weight-only schemes run about as fast as fp16 and only save
-memory.
+Weight-only schemes save memory (half for `w8`, a quarter for `w4`). Above 8 rows they run about as fast as fp16.
 
 Check accuracy with `mu.quantization.compare(fp32_program, quantized_program, inputs)`. It returns the cosine,
 max error and relative error.

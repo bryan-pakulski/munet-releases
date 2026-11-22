@@ -37,11 +37,11 @@ Compiled kernels (SPIR-V), driver pipeline caches and autotune results live in `
 | `"fp32"` | float32 | 1x | exact reference |
 | `"mixed"` (default) | fp16 inputs, fp32 accumulation, on tensor / matrix cores | ~2-3x fp32 | relative error ~1e-3; safe default |
 | `"mixed_safe"` | as `"mixed"`, plus rescaled matmul gradients | as `"mixed"` | training only: use it when training stalls or diverges in `"mixed"` |
-| `"fp16"` | fp16 inputs and accumulation | up to 2x `"mixed"` on GPUs with fast fp16 accumulation (NVIDIA GeForce RTX 30/40), same as `"mixed"` elsewhere | validate per model |
+| `"fp16"` | fp16 inputs and accumulation | faster than `"mixed"` on GPUs with fast fp16 accumulation, same as `"mixed"` elsewhere | validate per model |
 
 - Everything outside matmuls and convolutions (activations, normalization, softmax) computes in fp32 in every mode.
 - On GPUs without cooperative-matrix support, `"mixed"` runs fp32 kernels. `"fp16"` runs portable fp16 kernels where
-  shaders have fp16 arithmetic (Adreno 650: 1.1-1.5x faster than `"fp32"`), and fp32 kernels elsewhere.
+  shaders have fp16 arithmetic, and fp32 kernels elsewhere.
 
 Start with `"fp16"` for inference. If outputs differ too much from `"fp32"`, use `"mixed"`.
 [examples/python/infer_onnx.py](https://github.com/bryan-pakulski/munet-releases/blob/main/examples/python/infer_onnx.py) `--compare` checks against ONNX Runtime.

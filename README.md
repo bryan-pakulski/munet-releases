@@ -47,12 +47,12 @@ python tools/phone_diagnose.py           # about 5 minutes; --quick for 2; write
 | Train a model | [Training](docs/training.md) |
 | Feed training data (datasets, shuffling, workers, prefetch) | [Data loading](docs/data.md) |
 | Train on several GPUs, including different sizes (e.g. 24 + 12 + 8 GB) | [Multiple GPUs](docs/multi-gpu.md) |
+| Train across machines with nodes that join and leave | [Training pool](docs/pool.md) |
 | Train across machines (owner and worker nodes) | [Training swarm](docs/swarm.md) |
 | Import or export ONNX, or import PyTorch | [ONNX](docs/onnx.md) |
 | Run models fast (precision, autotuning, batching, `.mnet`) | [Inference and performance](docs/inference.md) |
 | Quantize to int8 / int4 | [Quantization](docs/quantization.md) |
 | Configure NVIDIA, AMD or Intel GPUs, and containers | [GPU vendors](docs/gpus.md) |
-| Check which GPUs have been tested | [Tested hardware](docs/tested-hardware.md) |
 | Report how MuNet runs on my GPU | [Hardware report](docs/hardware-report.md) |
 | Run models from C or C++ | [C and C++](docs/c.md) |
 | Add MuNet to an Android app | [Android](docs/android.md) |
