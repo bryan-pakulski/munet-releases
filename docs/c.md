@@ -213,7 +213,7 @@ munet_read_state(program, id, values, count);        // read a parameter, buffer
 - int8 is part of the program, not an option. Import with `int8_scales` (from `munet_calibrate_onnx` or Python's
   `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
   See [quantization.md](quantization.md).
-- Autotuning: run the program once from Python with `autotune=True` and the same precision on the target GPU
+- Autotuning: on the target GPU run `python -m munet.autotune model.mnet --precision <the precision you load with>`
   ([inference.md](inference.md#autotuning)). C loads apply the cached results when `use_autotune_cache` is set (the
   default). Untuned shapes use heuristics.
 - Device probe: `munet_probe_device(device)` checks the per-GPU kernel choices against the CPU executor, times them

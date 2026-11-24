@@ -45,6 +45,10 @@ for i in range(len(mu.devices())):
   `VK_NV_cooperative_matrix`, so MuNet runs fp32 kernels there and says so in `driver_warning`. The 595 branch works on
   Turing through Blackwell.
 - **Precision.** GPUs with fast fp16 accumulation run `"fp16"` faster than `"mixed"` on matmuls and convolutions.
+- **Idle clocks.** The GPU lowers its clocks after a few seconds of no or sparse work, and what follows runs slowly
+  until they recover. On an RTX 3060 an fp32 1024^3 matmul takes 0.43 ms under load, 4.0 ms after 5 idle seconds, and
+  needs 0.4 s of sustained work to recover. Warm up before timing; the autotuner and `munet.diagnose` do this
+  themselves. A service with seconds between requests sees this on each request.
 - **`VK_NV_cooperative_matrix2`.** It is detected (`coopmat2`) and used by an opt-in convolution kernel,
   `MUNET_COOP2_CONV=1`. That kernel is correct but not faster, so leave it off. `MUNET_DISABLE_COOP2=1` hides the
   extension entirely.
@@ -72,8 +76,10 @@ for i in range(len(mu.devices())):
 - **Driver.** Mesa RADV (`mesa-vulkan-drivers` / `vulkan-radeon`). AMDVLK also works.
 - **Matrix cores.** RDNA3 and newer expose cooperative matrices (WMMA) through RADV, used by `"mixed"` / `"fp16"`.
   Older GPUs run the fp32 kernels.
-- **Testing.** AMD runs the same portable kernels as NVIDIA and Intel, but is not yet tested on hardware. Run
-  `python -m munet.diagnose` and send us the file ([hardware-report.md](hardware-report.md)).
+- **Tiles.** `"fp16"` keeps tiles of at most 8 matrix fragments per subgroup: larger ones are several times slower
+  on RADV. `probe_device()` measures this on your GPU ([inference.md](inference.md#device-probe)).
+- **Testing.** Tuned from user hardware reports, not on hardware of our own. Run `python -m munet.diagnose` and send us
+  the file ([hardware-report.md](hardware-report.md)).
 - **Containers.** `--device /dev/dri` (Vulkan does not need `/dev/kfd`).
 
 ## Mobile and embedded (Arm Mali, Qualcomm Adreno)
@@ -81,12 +87,13 @@ for i in range(len(mu.devices())):
 Without cooperative matrices these run fp32 kernels, or portable fp16 kernels with `precision="fp16"` where shaders
 have fp16 arithmetic.
 
-Two kernel choices depend on the GPU. Built-in rules pick them from the vendor and model:
+Three kernel choices depend on the GPU. Built-in rules pick them from the vendor and model:
 
 | Choice | Rule | Override |
 |---|---|---|
 | Direct fp16 convolution, widest layer it takes | Adreno 7xx: any width; Adreno 6xx: 64 output channels; others: 32 | `MUNET_CONV_DIRECT=N` (`0`: off) |
 | GEMM operand staging in shared memory | Qualcomm: whole vec4s; others: single elements | `MUNET_GEMM_VEC_STAGING=0/1` |
+| `"fp16"` matrix-core tiles of 16+ fragments per subgroup | NVIDIA: on; others: off | `MUNET_ACC16_WIDE=0/1` |
 
 Single-element staging returns wrong results on some Qualcomm drivers. For a GPU the rules were not written
 for, run the device probe once: [inference.md](inference.md#device-probe).

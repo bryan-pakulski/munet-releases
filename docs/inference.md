@@ -37,6 +37,7 @@ Compiled kernels (SPIR-V), driver pipeline caches and autotune results live in `
 | `"fp32"` | float32 | 1x | exact reference |
 | `"mixed"` (default) | fp16 inputs, fp32 accumulation, on tensor / matrix cores | ~2-3x fp32 | relative error ~1e-3; safe default |
 | `"mixed_safe"` | as `"mixed"`, plus rescaled matmul gradients | as `"mixed"` | training only: use it when training stalls or diverges in `"mixed"` |
+| `"bf16"` | bf16 inputs and storage, fp32 accumulation | as `"mixed"` | relative error ~3e-3; no fp16 overflow; fp32 on GPUs without bf16 matrix cores |
 | `"fp16"` | fp16 inputs and accumulation | faster than `"mixed"` on GPUs with fast fp16 accumulation, same as `"mixed"` elsewhere | validate per model |
 
 - Everything outside matmuls and convolutions (activations, normalization, softmax) computes in fp32 in every mode.
@@ -60,6 +61,8 @@ model(example)                          # tunes during this call (default budget
   later load of the same shapes on the same GPU uses them, from Python, C, C++ or Rust.
 - **Tune what you deploy.** Run it once per GPU model, with the batch sizes and precision you ship. To deploy, copy
   the cache directory along with the `.mnet`, or run the tuning step on the target machine.
+- **Saved programs.** `python -m munet.autotune model.mnet --precision fp16 --budget 600` tunes a `.mnet` on this
+  GPU for C, C++ and Rust loads and native pool nodes.
 - **Budget.** `MUNET_AUTOTUNE_BUDGET_S=120` raises the per-program time limit. `MUNET_AUTOTUNE=1` turns tuning on
   for every compile.
 
@@ -71,7 +74,7 @@ The probe measures them on the GPU itself instead of relying on the built-in rul
 ```python
 import munet as mu
 profile = mu.probe_device()      # a few seconds; C: munet_probe_device(0), Rust: munet::probe_device(0)
-print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile["notes"])
+print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile.get("acc16_wide_tiles"), profile["notes"])
 ```
 
 - **Correctness first.** Each choice runs small convolutions and matmuls and is compared with the CPU reference
@@ -79,8 +82,8 @@ print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile["not
 - **Then speed.** The correct choices are timed against each other on the GPU.
 - **Stored per GPU and driver.** The result is saved as `device-<vendor>-<device>-<driver>-probe-v1.json` in the
   kernel cache. Later compiles and loads use it instead of the built-in rules. A driver update gets a new profile.
-- **Overrides win.** `MUNET_CONV_DIRECT` and `MUNET_GEMM_VEC_STAGING` take precedence over the profile; unset them
-  before probing.
+- **Overrides win.** `MUNET_CONV_DIRECT`, `MUNET_GEMM_VEC_STAGING` and `MUNET_ACC16_WIDE` take precedence over the
+  profile; unset them before probing.
 - **Run it once per device**, for example on first start. It is separate from autotuning, which picks tile sizes on
   GPUs with cooperative matrices.
 

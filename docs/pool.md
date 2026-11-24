@@ -155,6 +155,9 @@ python -m munet.pool https://trainer.example:8770 --device vulkan:0
 - `--device`: `vulkan:N` or `cpu`; several separated by commas, or `all` for every GPU of the machine. See
   [Several GPUs in one machine](#several-gpus-in-one-machine).
 - `--precision`: `fp32` (default) or `mixed`.
+- Tuned kernels: a node uses the autotune results in its cache directory (`MUNET_CACHE_DIR`). To fill it, save the
+  gradient program and run `python -m munet.autotune grad.mnet --precision <the node's precision>` once on that
+  machine. See [inference.md](inference.md#autotuning).
 - `--activations`: `fp32` (default) or `fp16`. `fp16` stores forward activations as half floats, so a program needs
   less memory and its gradients are rounded. It needs `--precision fp32` and a Vulkan device. See
   [Half-float activations](#half-float-activations).
@@ -314,7 +317,8 @@ programs.
 
 A node with memory to spare runs several shards as one. The master traces the program for 2, 4, 8, ... shards' rows
 and gives each node the largest one that fits its limit. The node joins those shards' inputs and runs them once, so
-it does more work per weight download. In [local steps](#local-steps) a joined run is one larger optimizer step.
+it does more work per weight download. In [local steps](#local-steps) a joined run is one larger optimizer step,
+and BatchNorm takes its statistics from the joined rows, so results differ from the same shards run one by one.
 A node runs one joined size and the single-shard program, so it never drops programs to make room.
 `status()` shows each node's `run_rows`. Joining applies to a pool given one function, not to stages or cuts.
 

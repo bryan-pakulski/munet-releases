@@ -24,6 +24,7 @@ on. Some switches react to any value, so unset them rather than setting `0`.
 | `MUNET_AUTOTUNE_BUDGET_S` | `30` | seconds of tuning per program |
 | `MUNET_CONV_DIRECT=N` | device rule or profile | `"fp16"` without cooperative matrices: widest convolution (output channels) that runs the direct kernel; `0` uses the GEMM kernel everywhere ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)) |
 | `MUNET_GEMM_VEC_STAGING=0/1` | device rule or profile | portable GEMM kernels stage operands as single elements (`0`) or whole vec4s (`1`) |
+| `MUNET_ACC16_WIDE=0/1` | device rule or profile | `"fp16"` matrix-core kernels: tiles of at most 8 fragments per subgroup (`0`) or the wide tiles tuned on NVIDIA (`1`) ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)) |
 | `MUNET_MERGE_SIBLINGS=1` | off | ONNX import: merge sibling layers that read the same input. No bench model gains from it. Part of the native-import cache key |
 | `MUNET_COOP2_CONV=1` | off | NVIDIA `VK_NV_cooperative_matrix2` convolution kernel (experimental, not faster) |
 
