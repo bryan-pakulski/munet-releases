@@ -154,10 +154,11 @@ python -m munet.pool https://trainer.example:8770 --device vulkan:0
 
 - `--device`: `vulkan:N` or `cpu`; several separated by commas, or `all` for every GPU of the machine. See
   [Several GPUs in one machine](#several-gpus-in-one-machine).
-- `--precision`: `fp32` (default) or `mixed`.
+- `--precision`: `fp32` (default), `mixed` (fp16 operands, fp32 sums) or `bf16` (bf16 operands, fp32 sums: fp32's
+  range, so no fp16 overflow; fp32 kernels on GPUs without bf16 matrix cores).
 - Tuned kernels: a node uses the autotune results in its cache directory (`MUNET_CACHE_DIR`). To fill it, save the
   gradient program and run `python -m munet.autotune grad.mnet --precision <the node's precision>` once on that
-  machine. See [inference.md](inference.md#autotuning).
+  machine. See tuning.md.
 - `--activations`: `fp32` (default) or `fp16`. `fp16` stores forward activations as half floats, so a program needs
   less memory and its gradients are rounded. It needs `--precision fp32` and a Vulkan device. See
   [Half-float activations](#half-float-activations).
@@ -173,6 +174,7 @@ python -m munet.pool https://trainer.example:8770 --device vulkan:0
 - `--name`: the name shown in `status()` (default: the host name).
 - `--memory`: limit on the buffers this node allocates, e.g. `2G` or `1500M`. Default: three quarters of the device
   memory on Vulkan, no limit on `cpu`. The node reports it when it joins. See [Memory limit](#memory-limit).
+- `--no-join-small-shards`: take one shard per run, never a [joined run](#joined-shards) of several.
 - `--allow-http`: allow plain HTTP to another machine. Use it only on a trusted network.
 - `MUNET_CA_BUNDLE`: CA bundle file for a master with a private certificate.
 
@@ -312,6 +314,8 @@ programs.
 - Programs that fit share the limit. The node drops the least recently used program to make room for another.
 - The limit covers MuNet's buffers only. Memory the GPU driver maps on top is not counted, so leave headroom.
 - `status()` shows each node's `memory_limit` and the programs it `declined`, with the bytes each one needs there.
+- A node that can take no waiting task is told why. The master logs one warning per node and program, the node logs
+  the bytes the program needs and its limit, and `status()` shows them as the node's `unable`.
 
 ### Joined shards
 
@@ -321,6 +325,9 @@ it does more work per weight download. In [local steps](#local-steps) a joined r
 and BatchNorm takes its statistics from the joined rows, so results differ from the same shards run one by one.
 A node runs one joined size and the single-shard program, so it never drops programs to make room.
 `status()` shows each node's `run_rows`. Joining applies to a pool given one function, not to stages or cuts.
+`Pool(..., join_small_shards=False)` turns joining off for the whole pool; `--no-join-small-shards` (or
+`pool.Node(..., join_small_shards=False)`) turns it off for one node, for example to keep BatchNorm statistics at
+`shard_rows` rows.
 
 A pool given one function cuts the model for a node that cannot hold it; see [Automatic cuts](#automatic-cuts).
 

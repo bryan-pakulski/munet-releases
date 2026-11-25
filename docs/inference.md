@@ -49,22 +49,15 @@ Start with `"fp16"` for inference. If outputs differ too much from `"fp32"`, use
 
 ## Autotuning
 
-By default MuNet picks kernel tile sizes with heuristics. Autotuning times the candidates on your GPU once and keeps
-the fastest. That typically gains 5-10% on large models, more on unusual shapes.
+Autotuning times kernel tile candidates on your GPU once per shape and caches the fastest. It typically gains 5-10%
+on large models and is off by default, because the first compile of each new shape takes longer.
 
 ```python
 model = from_onnx("model.onnx", input_shapes=..., precision="fp16", autotune=True)
 model(example)                          # tunes during this call (default budget: 30 s per program)
 ```
 
-- **Shared cache.** Results are cached per GPU model, driver, precision and kernel shape in the kernel cache. Every
-  later load of the same shapes on the same GPU uses them, from Python, C, C++ or Rust.
-- **Tune what you deploy.** Run it once per GPU model, with the batch sizes and precision you ship. To deploy, copy
-  the cache directory along with the `.mnet`, or run the tuning step on the target machine.
-- **Saved programs.** `python -m munet.autotune model.mnet --precision fp16 --budget 600` tunes a `.mnet` on this
-  GPU for C, C++ and Rust loads and native pool nodes.
-- **Budget.** `MUNET_AUTOTUNE_BUDGET_S=120` raises the per-program time limit. `MUNET_AUTOTUNE=1` turns tuning on
-  for every compile.
+How it works, what it gains and costs, and how to deploy tuned kernels: tuning.md.
 
 ## Device probe
 
@@ -140,7 +133,7 @@ When timing:
 
 1. Fix shapes with `input_shapes`. Don't use symbolic shapes in production.
 2. Use `precision="fp16"` (or `"mixed"` if accuracy needs it).
-3. Run `autotune=True` once on each GPU model you deploy to.
+3. Run `autotune=True` once on each GPU model you deploy to (tuning.md).
 4. Batch requests. Export one program per batch size.
 5. For CNNs, try int8 and measure accuracy.
 6. Keep programs alive. Use `.mnet` for fast loading and for C/C++/Rust.

@@ -20,7 +20,6 @@ on. Some switches react to any value, so unset them rather than setting `0`.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `MUNET_AUTOTUNE=1` | off | autotune every compile ([inference.md](inference.md#autotuning)) |
 | `MUNET_AUTOTUNE_BUDGET_S` | `30` | seconds of tuning per program |
 | `MUNET_CONV_DIRECT=N` | device rule or profile | `"fp16"` without cooperative matrices: widest convolution (output channels) that runs the direct kernel; `0` uses the GEMM kernel everywhere ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)) |
 | `MUNET_GEMM_VEC_STAGING=0/1` | device rule or profile | portable GEMM kernels stage operands as single elements (`0`) or whole vec4s (`1`) |

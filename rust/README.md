@@ -196,6 +196,7 @@ fn main() -> munet::Result<()> {
 | `Mixed` (default) | `"mixed"` | fp16 operands, fp32 accumulation; int8 on quantized layers |
 | `Fp16` | `"fp16"` | fp16 operands and accumulation; fastest on GPUs with fp16-accumulate cooperative matrices; validate accuracy per model |
 | `Fp32` | `"fp32"` | exact float32 (reference) |
+| `Bf16` | `"bf16"` | bf16 operands and storage, fp32 accumulation; no fp16 overflow; fp32 on GPUs without bf16 matrix cores |
 
 - GPUs without cooperative matrices (most mobile GPUs): `Mixed` runs fp32 kernels. `Fp16` runs portable fp16 kernels
   where shaders have fp16 arithmetic, and fp32 kernels elsewhere.

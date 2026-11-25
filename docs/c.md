@@ -206,6 +206,7 @@ munet_read_state(program, id, values, count);        // read a parameter, buffer
 | `MUNET_PRECISION_MIXED` (default) | `"mixed"` | fp16 operands, fp32 accumulation; int8 on quantized layers |
 | `MUNET_PRECISION_FP16` | `"fp16"` | fp16 operands and accumulation; fastest on GPUs with fp16-accumulate cooperative matrices; validate accuracy per model |
 | `MUNET_PRECISION_FP32` | `"fp32"` | exact float32 (reference) |
+| `MUNET_PRECISION_BF16` | `"bf16"` | bf16 operands and storage, fp32 accumulation; no fp16 overflow; fp32 on GPUs without bf16 matrix cores |
 
 - GPUs without cooperative matrices (most mobile GPUs) run fp32 kernels, except `MUNET_PRECISION_FP16`: it runs
   portable fp16 matmul/convolution kernels where shaders have fp16 arithmetic (`half_gemm_kernels` in the stats).
@@ -214,7 +215,7 @@ munet_read_state(program, id, values, count);        // read a parameter, buffer
   `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
   See [quantization.md](quantization.md).
 - Autotuning: on the target GPU run `python -m munet.autotune model.mnet --precision <the precision you load with>`
-  ([inference.md](inference.md#autotuning)). C loads apply the cached results when `use_autotune_cache` is set (the
+  (tuning.md). C loads apply the cached results when `use_autotune_cache` is set (the
   default). Untuned shapes use heuristics.
 - Device probe: `munet_probe_device(device)` checks the per-GPU kernel choices against the CPU executor, times them
   and stores a device profile in the cache directory; later loads use it. `munet_device_profile_json` returns it

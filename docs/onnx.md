@@ -20,7 +20,6 @@ boxes = outputs.numpy()                                        # one output: a R
 | `input_shapes` | `None` (shapes from the file) | `{input name: shape}` for symbolic dimensions |
 | `max_specializations` | `8` | programs kept when shapes stay symbolic (see [Input shapes](#input-shapes)) |
 | `int8` | `None` | activation scales from `calibrate_onnx`: int8 convolutions ([quantization.md](quantization.md)) |
-| `autotune` | `None` (follows `MUNET_AUTOTUNE`) | time kernel tile sizes once per GPU and cache them ([inference.md](inference.md#autotuning)) |
 | `optimize` | `True` | merge layers before import (see below) |
 | `profile` | `False` | per-kernel GPU times in `model.describe()` |
 | `native` | `False` | import with the engine's C++ importer (the one C and Rust use); see [native import](#native-import-load-onnx-without-python) |
