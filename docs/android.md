@@ -172,5 +172,6 @@ must give the same outputs on the CPU executor and the GPU.
 - **`No implementation found for ... nativeInit`:** the Kotlin package and the function names in `munet_jni.cpp`
   differ.
 - **A load fails with a Vulkan error:** the device has no usable Vulkan 1.1 driver. `device = -1` runs on the CPU.
-- **Wrong or non-finite outputs on a GPU that has not been probed:** run `MuNet.probe()` and load again. If the outputs
+- **Wrong or non-finite outputs on a GPU that has not been probed:** the first load probes automatically; if it was
+  skipped (`MUNET_AUTO_PROBE=0`) or failed, run `MuNet.probe()` and load again. If the outputs
   are still wrong, see [troubleshooting.md](troubleshooting.md).

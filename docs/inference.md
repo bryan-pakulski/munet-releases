@@ -64,6 +64,9 @@ How it works, what it gains and costs, and how to deploy tuned kernels: tuning.m
 A few kernel choices depend on the GPU and driver ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)).
 The probe measures them on the GPU itself instead of relying on the built-in rules.
 
+The first compile or load on a GPU and driver with no stored profile runs the probe automatically (a few seconds,
+once). `MUNET_AUTO_PROBE=0` turns this off. To probe ahead of time or again:
+
 ```python
 import munet as mu
 profile = mu.probe_device()      # a few seconds; C: munet_probe_device(0), Rust: munet::probe_device(0)
@@ -77,8 +80,8 @@ print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile.get(
   kernel cache. Later compiles and loads use it instead of the built-in rules. A driver update gets a new profile.
 - **Overrides win.** `MUNET_CONV_DIRECT`, `MUNET_GEMM_VEC_STAGING` and `MUNET_ACC16_WIDE` take precedence over the
   profile; unset them before probing.
-- **Run it once per device**, for example on first start. It is separate from autotuning, which picks tile sizes on
-  GPUs with cooperative matrices.
+- **Once per device.** A failed automatic probe prints a warning, keeps the built-in rules and is not retried in
+  that process. The probe is separate from autotuning, which picks tile sizes per matrix shape.
 
 `mu.device_profile()` returns the stored profile (`{}` if the GPU was never probed). `complete` is false and `notes`
 says why when a check failed or the device was lost; restart the process in that case.
