@@ -50,7 +50,7 @@ def main():
     images = [load_image(f, shape[2], shape[3], mean, std) for f in files]
 
     # 1. Activation scales: runs the model in fp32 over the images and picks a clip value per convolution input.
-    scales = calibrate_onnx(args.model, [(x,) for x in images], observer="mse")
+    scales = calibrate_onnx(args.model, [(x,) for x in images])
     print(f"calibrated {len(scales)} convolutions on {len(images)} images")
 
     # 2. Same model, int8 convolutions (eligible ones; the rest stay fp16).

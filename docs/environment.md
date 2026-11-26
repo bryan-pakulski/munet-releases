@@ -25,6 +25,7 @@ on. Some switches react to any value, so unset them rather than setting `0`.
 | `MUNET_AUTO_PROBE=0` | on | skip the automatic device probe on the first compile or load on a new GPU or driver ([inference.md](inference.md#device-probe)) |
 | `MUNET_GEMM_VEC_STAGING=0/1` | device rule or profile | portable GEMM kernels stage operands as single elements (`0`) or whole vec4s (`1`) |
 | `MUNET_ACC16_WIDE=0/1` | device rule or profile | `"fp16"` matrix-core kernels: tiles of at most 8 fragments per subgroup (`0`) or the wide tiles tuned on NVIDIA (`1`) ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)) |
+| `MUNET_CONV_WIDE_TILES=0/1` | device rule or profile | portable GEMM convolutions of up to 32 output channels: 32x32 tile (`0`) or 64x64 (`1`, faster on Intel Arc) ([gpus.md](gpus.md#mobile-and-embedded-arm-mali-qualcomm-adreno)) |
 | `MUNET_MERGE_SIBLINGS=1` | off | ONNX import: merge sibling layers that read the same input. No bench model gains from it. Part of the native-import cache key |
 | `MUNET_COOP2_CONV=1` | off | NVIDIA `VK_NV_cooperative_matrix2` convolution kernel (experimental, not faster) |
 
@@ -53,12 +54,11 @@ Switches to isolate a wrong result or a GPU crash.
 | `NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics[,video]` | containers: NVIDIA exposes Vulkan only with `graphics` |
 | `ANV_DEBUG=video-decode` | Intel Mesa: enable hardware video decode (zero-copy video) |
 
-## Training swarm
+## Training pool
 
 | Variable | Effect |
 |---|---|
-| `MUNET_SWARM_TOKEN` | enrolment secret for `munet-server` and `munet-node` (at least 32 characters) ([swarm.md](swarm.md)) |
-| `MUNET_CA_BUNDLE` | `munet-node` and pool nodes: CA bundle file that verifies the owner's or master's TLS certificate (default: the system trust store; `munet-pool-node` has no default and needs this or `--ca`) |
+| `MUNET_CA_BUNDLE` | pool nodes: CA bundle file that verifies the master's TLS certificate (default: the system trust store; `munet-pool-node` has no default and needs this or `--ca`) |
 | `MUNET_POOL_TOKEN` | the pool's token for `python -m munet.pool` and `munet-pool-node` (at least 32 characters) ([pool.md](pool.md)) |
 
 ## Rust crate build
@@ -85,7 +85,6 @@ Not needed to use MuNet.
 | `MUNET_BENCH_TRT_IMAGE` | TensorRT container image for `examples/bench/run.py --trt` (default of `--trt-image`) |
 | `MUNET_BENCH_TORCH_PYTHON` | Python with torch and torchvision for the bench's local model exports (default: the bench's own) |
 | `MUNET_BENCH_LOCAL_DETR` | path of a local RT-DETR-style ONNX export (1280 px) for the bench's `local-detr-1280` entries (default `~/.cache/munet-bench/local/detr-1280.onnx`) |
-| `MUNET_TEST_SWARM`, `MUNET_SWARM_NODE`, `MUNET_SWARM_NODE_WRAPPER` | swarm integration tests |
 | `MUNET_POOL_NODE` | path of `munet-pool-node` for the pool tests (default `build/pool-node/munet-pool-node`; those tests skip without it) |
 
 Kernel-tuning overrides used during development (`MUNET_MM_CFG`, `MUNET_CONV_CFG`, `MUNET_FLASH_TILE`, `MUNET_ACC16`,

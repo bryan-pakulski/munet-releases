@@ -81,11 +81,11 @@ and plain values ([training.md](training.md#checkpoints-and-resuming)).
 
 | Name | |
 |---|---|
-| `calibrate_onnx(path, batches, *, observer="mse", device="vulkan", bins=2048, native=False)` | int8 activation scales for `from_onnx(int8=...)` |
-| `autoquantize(model, calibration, validation=None, *, metric=None, tolerance=0.01, device="vulkan", autotune=True, observer="mse", ...)` | choose int8 layers of an ONNX model by measured speed and accuracy |
+| `calibrate_onnx(path, batches, *, observer="minmax", min_snr_db=20, device="vulkan", bins=2048, native=False)` | int8 activation scales for `from_onnx(int8=...)` |
+| `autoquantize(model, calibration, validation=None, *, metric=None, tolerance=0.01, device="vulkan", autotune=True, observer="minmax", ...)` | choose int8 layers of an ONNX model by measured speed and accuracy |
 | `quantize(model, calib_data=None, *, scheme="w8a8_dynamic", ...)` | `w8a8_dynamic`, `w8a8`, `w8`, `w4` for `Linear` layers |
 | `compare(reference, candidate, inputs)` | cosine / max / relative error |
 
-## Training across machines: `munet.swarm`
+## Training across machines: `munet.pool`
 
-`create_job(...)` and the `munet-server` / `munet-node` commands: see [swarm.md](swarm.md).
+`Pool`, `Node`, `Nodes` and `tls_context`: see [pool.md](pool.md).

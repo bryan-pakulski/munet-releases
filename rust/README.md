@@ -85,7 +85,7 @@ use munet::{calibrate_onnx, Observer, OnnxOptions, Options, Program};
 fn main() -> munet::Result<()> {
     let onnx = OnnxOptions::default().input_shape("images", &[1, 3, 640, 640]);
     let batch = vec![0.5f32; 3 * 640 * 640];
-    let scales = calibrate_onnx("detector.onnx", &onnx, &Options::default(), &[vec![&batch[..]]], Observer::Mse, 2048)?;
+    let scales = calibrate_onnx("detector.onnx", &onnx, &Options::default(), &[vec![&batch[..]]], Observer::MinMax, 2048, 20.0)?;
     let onnx = scales
         .into_iter()
         .fold(onnx, |o, (layer, scale)| o.int8(layer, scale as f32))

@@ -45,7 +45,6 @@ Wheels exist for CPython 3.10 to 3.14 on Linux x86_64 and aarch64 (manylinux, gl
 | `[vk]` | `onnx` and `onnxruntime`, to compare results with ONNX Runtime. It does not install a driver. |
 
 - `import munet` and `import munet_nn` load the same library.
-- The wheel also contains the swarm commands `munet-node` and `munet-server` ([swarm.md](swarm.md)).
 - Example model code (RT-DETR and others) is not in the wheel. It lives in the source examples.
 
 C, C++ and Rust: see [c.md](c.md) and [rust/README.md](../rust/README.md).
@@ -105,6 +104,6 @@ print(munet.license())   # {'status': 'licensed', 'customer': ..., 'expires': ..
 | Detect objects in an image | [inference.md](inference.md) | [detect_yolo.py](../examples/python/detect_yolo.py) |
 | Train a model | [training.md](training.md) | [train_classifier.py](../examples/python/train_classifier.py) |
 | Train on several GPUs | [multi-gpu.md](multi-gpu.md) | [train_multi_gpu.py](../examples/python/train_multi_gpu.py) |
-| Train across machines | [swarm.md](swarm.md) | |
+| Train across machines | [pool.md](pool.md) | |
 | int8 inference | [quantization.md](quantization.md) | [quantize_int8.py](../examples/python/quantize_int8.py) |
 | Deploy from C/C++/Rust | [c.md](c.md), [rust/README.md](../rust/README.md) | [run_model.cpp](../examples/c/run_model.cpp) |

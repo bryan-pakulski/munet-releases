@@ -85,7 +85,7 @@ machines.
 import os
 import munet as mu
 from munet import pool
-from munet.swarm.server import tls_context
+from munet.pool import tls_context
 
 model = MyNet()
 optimizer = mu.optim.AdamW(model.parameters(), lr=1e-3)
@@ -630,6 +630,3 @@ One shard per step reproduces single-machine training exactly.
   `shard_rows`.
 - Master and nodes must run the same MuNet version and the same pool protocol. The master refuses a node that
   differs when it joins.
-
-The older [training swarm](swarm.md) runs fixed, precomputed jobs with native nodes. It supports MSE loss and plain
-SGD only.

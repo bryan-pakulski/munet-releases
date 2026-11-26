@@ -70,7 +70,7 @@ once). `MUNET_AUTO_PROBE=0` turns this off. To probe ahead of time or again:
 ```python
 import munet as mu
 profile = mu.probe_device()      # a few seconds; C: munet_probe_device(0), Rust: munet::probe_device(0)
-print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile.get("acc16_wide_tiles"), profile["notes"])
+print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile.get("acc16_wide_tiles"), profile.get("conv_wide_tiles"))
 ```
 
 - **Correctness first.** Each choice runs small convolutions and matmuls and is compared with the CPU reference
@@ -78,7 +78,7 @@ print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile.get(
 - **Then speed.** The correct choices are timed against each other on the GPU.
 - **Stored per GPU and driver.** The result is saved as `device-<vendor>-<device>-<driver>-probe-v1.json` in the
   kernel cache. Later compiles and loads use it instead of the built-in rules. A driver update gets a new profile.
-- **Overrides win.** `MUNET_CONV_DIRECT`, `MUNET_GEMM_VEC_STAGING` and `MUNET_ACC16_WIDE` take precedence over the
+- **Overrides win.** `MUNET_CONV_DIRECT`, `MUNET_GEMM_VEC_STAGING`, `MUNET_ACC16_WIDE` and `MUNET_CONV_WIDE_TILES` take precedence over the
   profile; unset them before probing.
 - **Once per device.** A failed automatic probe prints a warning, keeps the built-in rules and is not retried in
   that process. The probe is separate from autotuning, which picks tile sizes per matrix shape.

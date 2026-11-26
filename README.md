@@ -48,7 +48,6 @@ python tools/phone_diagnose.py           # about 5 minutes; --quick for 2; write
 | Feed training data (datasets, shuffling, workers, prefetch) | [Data loading](docs/data.md) |
 | Train on several GPUs, including different sizes (e.g. 24 + 12 + 8 GB) | [Multiple GPUs](docs/multi-gpu.md) |
 | Train across machines with nodes that join and leave | [Training pool](docs/pool.md) |
-| Train across machines (owner and worker nodes) | [Training swarm](docs/swarm.md) |
 | Import or export ONNX, or import PyTorch | [ONNX](docs/onnx.md) |
 | Run models fast (precision, autotuning, batching, `.mnet`) | [Inference and performance](docs/inference.md) |
 | Tune kernels for my GPU (how autotuning works, what it gains) | [Performance tuning](docs/tuning.md) |

@@ -23,15 +23,19 @@ model = from_onnx("model.onnx", input_shapes={"images": (1, 3, 640, 640)}, preci
 munet.save(model, "model-int8.mnet")
 ```
 
-`calibrate_onnx(path, batches, *, observer="mse", device="vulkan", bins=2048, native=False)` runs the model in fp32
-and returns `{conv name: scale}`. Observers are `"mse"` (default), `"minmax"` and `"mean_max"`. `native=True` uses the
+`calibrate_onnx(path, batches, *, observer="minmax", min_snr_db=20, device="vulkan", bins=2048, native=False)` runs the
+model in fp32 and returns `{layer name: scale}`. Observers are `"minmax"` (default), `"mse"` and `"mean_max"`. Layers
+whose quantized input keeps less than `min_snr_db` dB of signal-to-noise ratio are left out and stay fp16; pass
+`min_snr_db=0` to quantize every eligible layer. `native=True` uses the
 engine's C++ importer, the same code as C's `munet_calibrate_onnx` and Rust's `munet::calibrate_onnx`.
 
 - **Which convolutions run in int8.** Those with constant weights, a spatial kernel (not 1x1), and a multiple of 32
   channels per group. The rest stay fp16. `model.stats()["int8_conv_kernels"]` counts the int8 ones.
 - **How values are quantized.** Weights per output channel, activations per tensor, both symmetric int8.
-- **Calibration data matters more than its amount.** Use real inputs from your domain. The default observer `"mse"`
-  is much better than `"minmax"` for detectors.
+- **Calibration data matters more than its amount.** Use real inputs from your domain.
+- **Observers.** `"mse"` clips rare large activations to resolve the common ones better. That can help CNNs, but
+  transformer MLP outputs carry signal in those large values: DINOv2-B fell to cos 0.42 against fp32 with `"mse"`.
+  `"minmax"` with the SNR filter keeps 0.99 there and matches `"mse"` on ResNet-50 and ConvNeXt.
 - **Check accuracy** on your validation set with your task metric before shipping.
 - **Partial selection.** Pass a subset of `scales` to quantize only some layers. Sensitive layers are often the
   first convolution and a few encoder layers.

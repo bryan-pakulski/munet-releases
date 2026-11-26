@@ -1,5 +1,6 @@
 {
  "birefnet/general-bb-swin-v1-tiny-epoch-232.onnx": "9b731932816b8e20d8b41a8ebe034dc6a3c96d27e43f1528379eef2d9e7526bc",
+ "convnext/v1-t.onnx": "afbeaedfa8a82e66809866cd447d6ae8d0f94d9303079c5a1c87572977e96c6d",
  "convnext/v2-a.onnx": "e15cef80900342c905c47f3cd74b62afa5b6ed364eb9f96ba550d52e29329dae",
  "convnext/v2-t.onnx": "4ee80693f250f25244ca3a403f066602ec8665b6158aa8986b7955244ae2efad",
  "d-fine/m-coco.onnx": "ba67b92308217a49a080dc33712cf318405f0066eaed96a09f05b08a9708e7c1",
@@ -37,11 +38,13 @@
  "url/onnxruntime/sd-turbo/vae_decoder/model.onnx": "8b5a9263fbd3ebd2647bae8e99cc99fdcff70a0b1b6a77ca7544c5f3e9e91649",
  "v0.0.1/clip-b32-visual-dyn.onnx": "4962914240f80dbac5b9d33dc3fa321cdcaa4820193d65c51e8edc3cd28109d2",
  "v0.0.1/depth-anything-v2-s.onnx": "b47f3b67a5fadc18dec8cfae9954544182b79b57e8beedf6051a27cd73001c77",
+ "v0.0.1/yolov5n-dyn.onnx": "0ba6af563b4e92818466fc805f31a19e78ddad62d1d0ed4d2d07a4972bbd3338",
  "v0.0.1/yolov7-tiny-dyn.onnx": "a2c44bfdd8e512d93c1e7844a79aa7c5736165fd5a775e4752021d3ab90e3ea5",
  "v0.0.1/yolov8n-dyn.onnx": "f2c6bc90f7173e8af7d134ff08e8687a27d4b3807b73a7aafdf2532159077518",
  "yolo/FastSAM-s.onnx": "57fea4df6632472bebfbd6669ba9826466a41b3febb37824eba60ded2832aa1b",
  "yolo/demo-cls.jpg": "e93655033d50ad34e4613b142bd711bcdf7c1ad884d0a3c9152bdaf3b72abdb9",
  "yolo/demo-det.jpg": "ce18447ed23e62da22d2de11144e3cfcb0b6b8a750efb18c1a59ea5ad67f6ac9",
+ "yolo/demo-obb.jpg": "761d5f20127ddf9ebfa1071285183bb3cdb0ac2331b559e9898e390c921df7f9",
  "yolo/demo-pose.jpg": "4371e981b0b455bd60b4b2bfbc75314d6307eb5a75abd10f3a8fa8ff3e3dd99c",
  "yolo/rtdetr-l-det.onnx": "a82ca244b8574566f7e92e0d6a13186438eaa42923f4b9a0d39be98f722445fc",
  "yolo/v10-n-det.onnx": "c43ce408063e5a8bc10600751fd3578946e0744c0f9f47a8f4612f89d5056d55",
@@ -50,6 +53,7 @@
  "yolo/v11-m-det.onnx": "f4ab28b87f5ace68d6d433db14b2c7bbb094b050a4369a9754d1538a47c8df49",
  "yolo/v11-n-det-q8.onnx": "a7e7f02544747973525ffde5fc013eb35e9db2bdb873fcc6e334e37326bc6577",
  "yolo/v11-n-det.onnx": "dba055816b96452c708bd041ed28cf67b86225c08f5b2aa1611acc40c8ac0a44",
+ "yolo/v11-n-obb.onnx": "69119cb00c7a5175a738167342a2cc9316ed9bcc67990844d8a8ce130283252f",
  "yolo/v11-n-pose.onnx": "d30ef2f9ca994baf49c6deb431ce994a7fd8ddec88865b955f5fa3e286d88f60",
  "yolo/v11-n-seg.onnx": "84ff68ec5d590676e732fb8c695fc863ff5b929be764f3232fe6473a3f61cc4b"
 }

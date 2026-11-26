@@ -87,13 +87,14 @@ for i in range(len(mu.devices())):
 Without cooperative matrices these run fp32 kernels, or portable fp16 kernels with `precision="fp16"` where shaders
 have fp16 arithmetic.
 
-Three kernel choices depend on the GPU. Built-in rules pick them from the vendor and model:
+Four kernel choices depend on the GPU. Built-in rules pick them from the vendor and model:
 
 | Choice | Rule | Override |
 |---|---|---|
 | Direct fp16 convolution, widest layer it takes | Adreno 7xx: any width; Adreno 6xx: 64 output channels; others: 32 | `MUNET_CONV_DIRECT=N` (`0`: off) |
 | GEMM operand staging in shared memory | Qualcomm: whole vec4s; others: single elements | `MUNET_GEMM_VEC_STAGING=0/1` |
 | `"fp16"` matrix-core tiles of 16+ fragments per subgroup | NVIDIA: on; others: off | `MUNET_ACC16_WIDE=0/1` |
+| Portable GEMM convolutions of <= 32 output channels: 64x64 tile instead of 32x32 | Intel: on; others: off | `MUNET_CONV_WIDE_TILES=0/1` |
 
 Single-element staging returns wrong results on some Qualcomm drivers. For a GPU the rules were not written
 for, run the device probe once: [inference.md](inference.md#device-probe).

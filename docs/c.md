@@ -1,6 +1,6 @@
 # MuNet from C and C++
 
-The C API (`munet/munet_c.h`, API version 9, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
+The C API (`munet/munet_c.h`, API version 10, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
 them on any Vulkan GPU, or on the CPU reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig
 and other languages use the same library.
 
@@ -95,7 +95,7 @@ the same algorithm and observers as Python's `munet.quantization.calibrate_onnx`
 ```c
 const float* batch0[] = {images0, sizes0}, *batch1[] = {images1, sizes1};   /* one pointer per model input */
 const float* const* batches[] = {batch0, batch1};
-munet_calibration* cal = munet_calibrate_onnx("detector.onnx", &onnx, &options, batches, 2, "mse", 2048);
+munet_calibration* cal = munet_calibrate_onnx("detector.onnx", &onnx, &options, batches, 2, "minmax", 2048, 20.0);
 for (size_t i = 0; cal && i < munet_calibration_count(cal); ++i)
   printf("%s %g\n", munet_calibration_name(cal, i), munet_calibration_scale(cal, i));
 munet_calibration_free(cal);

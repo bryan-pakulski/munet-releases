@@ -120,8 +120,8 @@ display and anything else running on it.
   GPU's weight or `max_rows`.
 - **Gradient exchange.** Gradients are averaged on the host, so throughput scales best when compute per step is
   large compared with the model size. Use big batches, and convolutional or attention models rather than tiny MLPs.
-- **One machine only.** DataParallel covers the GPUs in one machine. Training across machines uses the training swarm
-  ([swarm.md](swarm.md)).
+- **One machine only.** DataParallel covers the GPUs in one machine. Training across machines uses the training pool
+  ([pool.md](pool.md)).
 
 ## Data loading
 
