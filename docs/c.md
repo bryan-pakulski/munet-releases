@@ -1,6 +1,6 @@
 # MuNet from C and C++
 
-The C API (`munet/munet_c.h`, API version 10, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
+The C API (`munet/munet_c.h`, API version 11, `MUNET_C_API_VERSION`) loads ONNX files or `.mnet` programs and runs
 them on any Vulkan GPU, or on the CPU reference executor. It is a plain C ABI, so C++, Rust (`munet-nn`), Go, C#, Zig
 and other languages use the same library.
 
@@ -214,9 +214,11 @@ munet_read_state(program, id, values, count);        // read a parameter, buffer
 - int8 is part of the program, not an option. Import with `int8_scales` (from `munet_calibrate_onnx` or Python's
   `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
   See [quantization.md](quantization.md).
-- Autotuning: on the target GPU run `python -m munet.autotune model.mnet --precision <the precision you load with>`
-  (tuning.md). C loads apply the cached results when `use_autotune_cache` is set (the
-  default). Untuned shapes use heuristics.
+- Autotuning: `munet_autotune(program, budget_s, report, size)` tunes the loaded program's matmul and convolution
+  kernels on its GPU and stores the winners in the cache directory (tuning.md). It skips kernels that
+  are already cached and stops after about `budget_s` seconds. Load the program again to run the tuned kernels: loads
+  apply cached results when `use_autotune_cache` is set (the default). Untuned shapes use heuristics.
+  `python -m munet.autotune model.mnet --precision <the precision you load with>` writes the same cache.
 - Device probe: `munet_probe_device(device)` checks the per-GPU kernel choices against the CPU executor, times them
   and stores a device profile in the cache directory; later loads use it. `munet_device_profile_json` returns it
   ([inference.md](inference.md#device-probe)).

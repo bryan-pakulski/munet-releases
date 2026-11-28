@@ -203,9 +203,11 @@ fn main() -> munet::Result<()> {
 - How to choose: [inference.md](https://github.com/bryan-pakulski/munet-releases/blob/main/docs/inference.md#precision).
 - int8 is part of the program. Import with `OnnxOptions::int8` scales (from `munet::calibrate_onnx` or Python's
   `calibrate_onnx`), or load an int8 `.mnet`. Its quantized convolutions then run on int8 kernels.
-- Autotuning: run the program once from Python on the target GPU with `autotune=True` and the same precision.
-  `Program::load` applies the cached results when `Options::autotune_cache` is set (the default). Untuned shapes use
-  heuristics.
+- Autotuning: `program.autotune(Duration::from_secs(600))?` tunes the loaded program's kernels on its GPU and stores
+  the winners in the kernel cache; load the program again to run them. `Program::load` applies cached results when
+  `Options::autotune_cache` is set (the default). Untuned shapes use heuristics. Try it with
+  `cargo run --release --example autotune -- model.mnet --precision fp16`. Python's `autotune=True` writes the same
+  cache.
 
 ## Device probe
 

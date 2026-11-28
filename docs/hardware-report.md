@@ -9,7 +9,7 @@ to a [hardware report issue](https://github.com/bryan-pakulski/munet-releases/is
 2. Close games, video and other GPU work. Plug in laptops.
 3. Run:
    ```bash
-   python -m munet.diagnose            # every GPU, 5-10 minutes each
+   python -m munet.diagnose            # every GPU, 10-15 minutes each
    ```
 4. Open a [hardware report](https://github.com/bryan-pakulski/munet-releases/issues/new?template=hardware-report.yml)
    and attach `munet-diag-<gpu>.json.gz`.
@@ -23,9 +23,9 @@ thermal state, and writes `munet-diag-phone-<model>.json.gz`. Attach that file t
 
 | Option | Effect |
 |---|---|
-| `--quick` | shorter run, 1-2 minutes per GPU |
+| `--quick` | shorter run, 2-3 minutes per GPU |
 | `--device N` | only Vulkan device N (repeatable) |
-| `--budget S` | seconds for the tile sweep per GPU (default 300) |
+| `--budget S` | seconds for the tile sweep per GPU (default 600, `--quick` 60) |
 | `--out FILE` | output path |
 
 ## What it collects
@@ -34,8 +34,8 @@ thermal state, and writes `munet-diag-phone-<model>.json.gz`. Attach that file t
 - **Ceilings:** measured memory bandwidth and fp32 / fp16 / int8 throughput.
 - **Correctness:** GEMM, convolution, attention, normalization and a training step at fp32, mixed and fp16,
   compared with MuNet's CPU backend.
-- **Tile sweep:** the time of every candidate tile for common GEMM and convolution shapes. This shows which defaults
-  are wrong for your GPU.
+- **Tile sweep:** the time of every candidate tile for common GEMM and convolution shapes, for inference and for
+  training (input and weight gradients). This shows which defaults are wrong for your GPU.
 - **Model profiles:** per-kernel GPU times of a small CNN and a small ViT.
 
 ## Privacy

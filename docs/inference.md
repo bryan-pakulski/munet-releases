@@ -75,8 +75,9 @@ print(profile["gemm_vec_staging"], profile.get("direct_conv_tier"), profile.get(
 
 - **Correctness first.** Each choice runs small convolutions and matmuls and is compared with the CPU reference
   executor. A choice that returns wrong results on this GPU is never selected.
-- **Then speed.** The correct choices are timed against each other on the GPU.
-- **Stored per GPU and driver.** The result is saved as `device-<vendor>-<device>-<driver>-probe-v1.json` in the
+- **Then speed.** The correct choices are timed against each other on the GPU. A built-in choice is replaced only on clear
+  evidence; for wide fp16 tiles, only when it loses on every timed shape.
+- **Stored per GPU and driver.** The result is saved as `device-<vendor>-<device>-<driver>-probe-v2.json` in the
   kernel cache. Later compiles and loads use it instead of the built-in rules. A driver update gets a new profile.
 - **Overrides win.** `MUNET_CONV_DIRECT`, `MUNET_GEMM_VEC_STAGING`, `MUNET_ACC16_WIDE` and `MUNET_CONV_WIDE_TILES` take precedence over the
   profile; unset them before probing.

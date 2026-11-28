@@ -22,7 +22,7 @@ or isn't detected, one command collects what we need to fix it:
 
 ```bash
 pip install munet-nn
-python -m munet.diagnose                 # 5-10 minutes per GPU; --quick for 1-2
+python -m munet.diagnose                 # 10-15 minutes per GPU; --quick for 2-3
 ```
 
 Then [open a hardware report](https://github.com/bryan-pakulski/munet-releases/issues/new?template=hardware-report.yml)
